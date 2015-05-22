@@ -252,6 +252,7 @@ errorx:
 int msg_list_check(msg_list ml)
 {
 	msg_list_el p0;
+	msg_list_el p0_next;
 
 	if(!ml)
 		goto errorx;
@@ -280,14 +281,19 @@ int msg_list_check(msg_list ml)
 
 			if(ml->ldone)
 				(ml->ldone)->prev = p0;
+
+			p0_next = p0->next;
 			p0->next = ml->ldone;
 
 			p0->prev = NULL;
 
 			ml->ldone = p0;
 			ml->nrdone++;
+		} else {
+			p0_next = p0->next;
 		}
-		p0 = p0->next;
+
+		p0 = p0_next;
 	}
 
 	lock_release(&ml->sem_done);
