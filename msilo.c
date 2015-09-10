@@ -984,7 +984,7 @@ static int m_dump(struct sip_msg* msg, char* owner, char* str2)
 		else
 			LM_DBG("sending composed body\n");
 
-			tmb.t_request(&msg_type,  /* Type of the message */
+			int res = tmb.t_request(&msg_type,  /* Type of the message */
 					&str_vals[1],     /* Request-URI (To) */
 					&str_vals[1],     /* To */
 					&str_vals[0],     /* From */
@@ -996,6 +996,11 @@ static int m_dump(struct sip_msg* msg, char* owner, char* str2)
 					(void*)(long)mid, /* Callback parameter */
 					NULL
 				);
+
+			if (res < 0){
+				LM_WARN("message sending failed [%d], res=%d messages for <%.*s>!\n",
+						mid, res, pto->uri.len, pto->uri.s);
+			}
 	}
 
 done:
@@ -1022,16 +1027,19 @@ void m_clean_silo(unsigned int ticks, void *param)
 	db_val_t db_vals[MAX_DEL_KEYS];
 	db_op_t  db_ops[1] = { OP_LEQ };
 	int n;
+	long deletedTotal = 0;
+	long iters = 0;
 
 	LM_DBG("cleaning stored messages - %d\n", ticks);
 
-	msg_list_check(ml);
-	mle = p = msg_list_reset(ml);
+	msg_list_check(ml); // Separates message with DONE / ERROR in sent_list to the done_list.
+	mle = p = msg_list_reset(ml); // Extracts done_list and returns it here.
 	n = 0;
 	while(p)
 	{
 		if(p->flag & MS_MSG_DONE)
 		{
+			iters += 1;
 #ifdef STATISTICS
 			if(p->flag & MS_MSG_TSND)
 				update_stat(ms_dumped_msgs, 1);
@@ -1049,6 +1057,8 @@ void m_clean_silo(unsigned int ticks, void *param)
 			{
 				if (msilo_dbf.delete(db_con, db_keys, NULL, db_vals, n) < 0)
 					LM_ERR("failed to clean %d messages.\n",n);
+				else
+					deletedTotal += 1;
 				n = 0;
 			}
 		}
@@ -1070,10 +1080,15 @@ void m_clean_silo(unsigned int ticks, void *param)
 	{
 		if (msilo_dbf.delete(db_con, db_keys, NULL, db_vals, n) < 0)
 			LM_ERR("failed to clean %d messages\n", n);
+		else
+			deletedTotal += 1;
 		n = 0;
 	}
 
 	msg_list_el_free_all(mle);
+	if (deletedTotal > 0 || iters > 0){
+		LM_INFO("Totaly cleaned messages: %ld, ticks: %d, iters: %ld\n", deletedTotal, ticks, iters);
+	}
 
 	/* cleaning expired messages */
 	if(ticks%(ms_check_time*ms_clean_period)<ms_check_time)
