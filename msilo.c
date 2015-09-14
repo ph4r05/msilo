@@ -1061,7 +1061,7 @@ void m_clean_silo(unsigned int ticks, void *param)
 				if (msilo_dbf.delete(db_con, db_keys, NULL, db_vals, n) < 0)
 					LM_ERR("failed to clean %d messages.\n",n);
 				else
-					deletedTotal += 1;
+					deletedTotal += n;
 				n = 0;
 			}
 		}
@@ -1084,7 +1084,7 @@ void m_clean_silo(unsigned int ticks, void *param)
 		if (msilo_dbf.delete(db_con, db_keys, NULL, db_vals, n) < 0)
 			LM_ERR("failed to clean %d messages\n", n);
 		else
-			deletedTotal += 1;
+			deletedTotal += n;
 		n = 0;
 	}
 
