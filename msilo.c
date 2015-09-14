@@ -816,6 +816,7 @@ static int m_dump(struct sip_msg* msg, char* owner, char* str2)
 
 	str str_vals[4], hdr_str , body_str;
 	time_t rtime;
+	time_t dumpId;
 
 	/* init */
 	ob_key = &sc_mid;
@@ -916,6 +917,8 @@ static int m_dump(struct sip_msg* msg, char* owner, char* str2)
 		goto error;
 	}
 
+	time(&dumpId);
+
 	db_vals[0].type = DB_STR;
 	db_vals[0].nul = 0;
 	db_vals[0].val.str_val.s = puri.user.s;
@@ -965,7 +968,7 @@ static int m_dump(struct sip_msg* msg, char* owner, char* str2)
 
 		hdr_str.len = 1024;
 		if(m_build_headers(&hdr_str, str_vals[3] /*ctype*/,
-				str_vals[0]/*from*/, rtime /*Date*/) < 0)
+				str_vals[0]/*from*/, rtime /*Date*/, (long) (dumpId * 1000l)) < 0)
 		{
 			LM_ERR("headers building failed [%d]\n", mid);
 			if (msilo_dbf.free_result(db_con, db_res) < 0)
@@ -1164,6 +1167,7 @@ void m_send_ontimer(unsigned int ticks, void *param)
 
 	str str_vals[4], hdr_str , body_str;
 	time_t stime;
+	time_t dumpId;
 
 	if(ms_reminder.s==NULL)
 	{
@@ -1213,6 +1217,7 @@ void m_send_ontimer(unsigned int ticks, void *param)
 		goto done;
 	}
 
+	time(&dumpId);
 	LM_DBG("dumping [%d] messages for <%.*s>!!!\n", RES_ROW_N(db_res), 24,
 			ctime((const time_t*)&ttime));
 
@@ -1233,7 +1238,7 @@ void m_send_ontimer(unsigned int ticks, void *param)
 
 		hdr_str.len = 1024;
 		if(m_build_headers(&hdr_str, str_vals[3] /*ctype*/,
-				ms_reminder/*from*/,0/*Date*/) < 0)
+				ms_reminder/*from*/,0/*Date*/, (long) (dumpId * 1000l)) < 0)
 		{
 			LM_ERR("headers building failed [%d]\n", mid);
 			if (msilo_dbf.free_result(db_con, db_res) < 0)
