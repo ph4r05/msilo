@@ -40,6 +40,11 @@
 #define CONTACT_SUFFIX  ">;msilo=yes"CRLF
 #define CONTACT_PREFIX_LEN (sizeof(CONTACT_PREFIX)-1)
 #define CONTACT_SUFFIX_LEN  (sizeof(CONTACT_SUFFIX)-1)
+#define EXTRA_OFFLINE_MSG "X-Offline: 1"CRLF
+#define EXTRA_OFFLINE_MSG_LEN (sizeof(EXTRA_OFFLINE_MSG)-1)
+#define EXTRA_OFFLINE_CHUNK "X-OfflineDump: "
+#define EXTRA_OFFLINE_CHUNK_LEN (sizeof(EXTRA_OFFLINE_CHUNK)-1)
+#define OFFLINE_CHUNK_ID_MAX_LEN 14
 
 extern int ms_add_date;
 
@@ -191,7 +196,7 @@ error:
  *         - body->s MUST be allocated
  * return: 0 OK ; -1 error
  * */
-int m_build_headers(str *buf, str ctype, str contact, time_t date)
+int m_build_headers(str *buf, str ctype, str contact, time_t date, long dumpId)
 {
 	char *p;
 	char strDate[48];
@@ -199,7 +204,9 @@ int m_build_headers(str *buf, str ctype, str contact, time_t date)
 
 	if(!buf || !buf->s || buf->len <= 0 || ctype.len < 0 || contact.len < 0
 			|| buf->len <= ctype.len+contact.len+14 /*Content-Type: */
-				+CRLF_LEN+CONTACT_PREFIX_LEN+CONTACT_SUFFIX_LEN)
+				+CRLF_LEN+CONTACT_PREFIX_LEN+CONTACT_SUFFIX_LEN
+			    +CRLF_LEN+EXTRA_OFFLINE_MSG_LEN+5
+				+CRLF_LEN+EXTRA_OFFLINE_CHUNK_LEN+OFFLINE_CHUNK_ID_MAX_LEN)
 		goto error;
 
 	p = buf->s;
@@ -227,6 +234,22 @@ int m_build_headers(str *buf, str ctype, str contact, time_t date)
 		p += contact.len;
 		strncpy(p, CONTACT_SUFFIX, CONTACT_SUFFIX_LEN);
 		p += CONTACT_SUFFIX_LEN;
+	}
+	{
+		int tmp=0;
+		strncpy(p, EXTRA_OFFLINE_MSG, EXTRA_OFFLINE_MSG_LEN);
+		p += EXTRA_OFFLINE_MSG_LEN;
+
+		strncpy(p, EXTRA_OFFLINE_CHUNK, EXTRA_OFFLINE_CHUNK_LEN);
+		p += EXTRA_OFFLINE_CHUNK_LEN;
+
+		tmp = snprintf(p, OFFLINE_CHUNK_ID_MAX_LEN, "%ld", dumpId);
+		if (tmp >= 0){
+			p += tmp;
+		}
+
+		strncpy(p, CRLF, CRLF_LEN);
+		p += CRLF_LEN;
 	}
 	buf->len = p - buf->s;
 	return 0;
