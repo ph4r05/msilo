@@ -112,6 +112,9 @@ public:
                 default:
                     break;
             }
+
+            // Deallocate job, using shared memory allocator.
+            queue->destroyJob(job);
         }
 
         LM_DBG("Sender thread %d in rank %d finished\n", arg->threadId, arg->rank);
