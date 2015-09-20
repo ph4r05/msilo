@@ -7,6 +7,7 @@
 
 #include "logic.h"
 #include "SipsSHMAllocator.hpp"
+#define DEFAULT_POOL_SIZE 256
 
 /**
  * Type of the job queued to worker queue.
@@ -83,6 +84,13 @@ public:
     SenderQueueJob * queue_head;
     SenderQueueJob * queue_tail;
 
+    // Job queue allocation pool.
+    // Optimization to minimize need for a new allocation.
+    SenderQueueJob * pool_head;
+    SenderQueueJob * pool_tail;
+    int pool_size;
+    boost::interprocess::interprocess_mutex pool_mutex;
+
     /**
      * Default constructor.
      */
@@ -91,6 +99,9 @@ public:
             queue_size{0},
             queue_head{NULL},
             queue_tail{NULL},
+            pool_head{NULL},
+            pool_tail{NULL},
+            pool_size{0},
             allocator{alloc}
     {}
 
@@ -116,6 +127,30 @@ public:
      * This must be the only way jobs are being created.
      */
     SenderQueueJob * newJob(){
+        // Take from pool, if non-empty, create otherwise.
+        {
+            scoped_lock<interprocess_mutex> lock(this->pool_mutex);
+            if (this->pool_size > 0 && this->pool_head != NULL){
+                SenderQueueJob * ret = this->pool_head;
+                this->pool_head = ret->next;
+
+                if (this->pool_head){
+                    this->pool_head->prev = NULL;
+                }
+
+                // Was this only one element?
+                if (this->queue_tail == ret){
+                    this->queue_tail = NULL;
+                }
+
+                --this->pool_size;
+                ret->next = NULL;
+                ret->prev = NULL;
+                ret->lambda = NULL;
+                return ret;
+            }
+        }
+
         SenderQueueJob * job = allocator.allocate(1, NULL);
         allocator.construct(job, SenderQueueJob());
         return job;
@@ -126,6 +161,31 @@ public:
      * This must be the only way jobs are being destroyed.
      */
     void destroyJob(SenderQueueJob *job){
+        // Return to pool, if non-full, deallocate otherwise.
+        {
+            scoped_lock<interprocess_mutex> lock(this->pool_mutex);
+            if (this->pool_size < DEFAULT_POOL_SIZE){
+                job->next = NULL;
+                job->prev = NULL;
+                job->lambda = NULL;
+
+                if (this->pool_head == NULL){
+                    this->pool_head = job;
+                }
+
+                job->prev = this->pool_tail;
+                this->pool_tail = job;
+
+                if (job->prev != NULL){
+                    job->prev->next = job;
+                }
+
+
+                ++this->pool_size;
+                return;
+            }
+        }
+
         allocator.destroy(job);
         allocator.deallocate(job, 1);
     }
