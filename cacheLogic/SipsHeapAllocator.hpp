@@ -1,15 +1,21 @@
+//
+// Created by Dusan Klinec on 20.09.15.
+//
 
+#ifndef OPENSIPS_1_11_2_TLS_SIPSHEAPALLOCATOR_HPP
+#define OPENSIPS_1_11_2_TLS_SIPSHEAPALLOCATOR_HPP
 
-#ifndef OPENSIPS_1_11_2_TLS_SIPSALLOCATOR_H
-#define OPENSIPS_1_11_2_TLS_SIPSALLOCATOR_H
 
 #include <limits>
 #include <iostream>
 #include "../../../mem/mem.h"
 #include "../../../mem/shm_mem.h"
 
+/**
+ * Allocator uses OpenSIPS facilities to allocate chunks on heap.
+ */
 template <class T>
-class SipsAllocator {
+class SipsHeapAllocator {
 public:
     // type definitions
     typedef T        value_type;
@@ -23,7 +29,7 @@ public:
     // rebind allocator to type U
     template <class U>
     struct rebind {
-        typedef SipsAllocator<U> other;
+        typedef SipsHeapAllocator<U> other;
     };
 
     // return address of values
@@ -38,17 +44,17 @@ public:
     /* constructors and destructor
      * - nothing to do because the allocator has no state
      */
-    SipsAllocator() throw() {
+    SipsHeapAllocator() throw() {
     }
 
-    SipsAllocator(const SipsAllocator&) throw() {
+    SipsHeapAllocator(const SipsHeapAllocator&) throw() {
     }
 
     template <class U>
-    SipsAllocator (const SipsAllocator<U>&) throw() {
+    SipsHeapAllocator (const SipsHeapAllocator<U>&) throw() {
     }
 
-    ~SipsAllocator() throw() {
+    ~SipsHeapAllocator() throw() {
     }
 
     // return maximum number of elements that can be allocated
@@ -62,7 +68,7 @@ public:
         std::cerr << "allocate " << num << " element(s)" << " of size " << sizeof(T) << std::endl;
 
         // Use shared memory interface provided by OpenSIPS.
-        pointer ret = (pointer)shm_malloc(num*sizeof(T));
+        pointer ret = (pointer)pkg_malloc(num*sizeof(T));
 
         // Old version: heap allocation.
         //pointer ret = (pointer)(::operator new(num*sizeof(T)));
@@ -89,7 +95,7 @@ public:
         std::cerr << "deallocate " << num << " element(s)" << " of size " << sizeof(T) << " at: " << (void*)p << std::endl;
 
         // Use shared memory interface provided by OpenSIPS.
-        shm_free((void*)p);
+        pkg_free((void*)p);
 
         // Old version: heap deallocation, delete operator.
         //::operator delete((void*)p);
@@ -98,15 +104,14 @@ public:
 
 // return that all specializations of this allocator are interchangeable
 template <class T1, class T2>
-bool operator== (const SipsAllocator<T1>&,
-                 const SipsAllocator<T2>&) throw() {
+bool operator== (const SipsHeapAllocator<T1>&,
+                 const SipsHeapAllocator<T2>&) throw() {
     return true;
 }
 template <class T1, class T2>
-bool operator!= (const SipsAllocator<T1>&,
-                 const SipsAllocator<T2>&) throw() {
+bool operator!= (const SipsHeapAllocator<T1>&,
+                 const SipsHeapAllocator<T2>&) throw() {
     return false;
 }
 
-
-#endif //OPENSIPS_1_11_2_TLS_SIPSALLOCATOR_H
+#endif //OPENSIPS_1_11_2_TLS_SIPSHEAPALLOCATOR_HPP
