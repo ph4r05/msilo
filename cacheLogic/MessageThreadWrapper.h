@@ -1,0 +1,14 @@
+//
+// Created by Dusan Klinec on 20.09.15.
+//
+
+#ifndef OPENSIPS_1_11_2_TLS_MESSAGETHREADWRAPPER_H
+#define OPENSIPS_1_11_2_TLS_MESSAGETHREADWRAPPER_H
+
+
+class MessageThreadWrapper {
+
+};
+
+
+#endif //OPENSIPS_1_11_2_TLS_MESSAGETHREADWRAPPER_H
