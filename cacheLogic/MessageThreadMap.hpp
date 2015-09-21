@@ -11,7 +11,7 @@
 #include <boost/functional/hash.hpp>
 #include <boost/unordered_map.hpp>
 #include <unordered_map>
-#include "logic.h"
+#include "logic.hpp"
 #include "MessageThreadElement.hpp"
 
 namespace bip = boost::interprocess;

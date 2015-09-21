@@ -12,11 +12,14 @@
 #include <boost/functional/hash.hpp>
 #include <boost/unordered_map.hpp>
 #include <unordered_map>
-#include "logic.h"
+#include "logic.hpp"
+#include "MessageListElement.hpp"
 #include "MessageThreadElement.hpp"
 #include "MessageThreadMap.hpp"
 #include "MessageThreadSender.hpp"
 #include "SenderJobQueue.hpp"
+#include "SipsHeapAllocator.hpp"
+#include "SipsSHMAllocator.hpp"
 
 namespace bip = boost::interprocess;
 

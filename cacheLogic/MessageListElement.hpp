@@ -5,6 +5,8 @@
 #ifndef OPENSIPS_1_11_2_TLS_MESSAGECACHEELEMENT_H
 #define OPENSIPS_1_11_2_TLS_MESSAGECACHEELEMENT_H
 
+#include "logic.hpp"
+
 /**
  * Structure holding loaded message from the database to be sent.
  * Linked list element. Used in message cache, in message send ctl class.

@@ -8,12 +8,10 @@
 #define SENDER_THREAD_NUM 1
 #define SENDER_THREAD_WAIT_MS 100
 
-#include <boost/interprocess/sync/interprocess_mutex.hpp>
-#include <boost/interprocess/sync/interprocess_condition.hpp>
-#include <boost/interprocess/sync/scoped_lock.hpp>
 #include <memory>
 #include <thread>
 #include <string>
+#include "logic.hpp"
 #include "SenderJobQueue.hpp"
 #include "MessageThreadManager.hpp"
 

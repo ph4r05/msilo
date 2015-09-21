@@ -5,7 +5,7 @@
 #ifndef OPENSIPS_1_11_2_TLS_SENDERJOBQUEUE_H
 #define OPENSIPS_1_11_2_TLS_SENDERJOBQUEUE_H
 
-#include "logic.h"
+#include "logic.hpp"
 #include "SipsSHMAllocator.hpp"
 #define DEFAULT_POOL_SIZE 256
 

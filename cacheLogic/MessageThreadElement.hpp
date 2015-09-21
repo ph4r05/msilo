@@ -12,8 +12,8 @@
 #include <boost/unordered_map.hpp>     //boost::unordered_map
 #include <boost/unordered_set.hpp>     //boost::unordered_set
 #include <boost/interprocess/sync/interprocess_mutex.hpp>
+#include "logic.hpp"
 #include "MessageListElement.hpp"
-#include "logic.h"
 
 // Message send record state.
 typedef enum MessageThreadState {

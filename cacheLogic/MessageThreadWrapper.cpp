@@ -3,6 +3,8 @@
 //
 
 #include "MessageThreadWrapper.h"
+
+#include "logic.hpp"
 #include "MessageThreadManager.hpp"
 #include "MessageThreadSender.hpp"
 #include "SipsSHMAllocator.hpp"
