@@ -33,7 +33,7 @@ int thread_mgr_destroy(thread_mgr *holder){
     // Dealloc manager.
     if (holder->mgr != NULL){
         SipsSHMAllocator<MessageThreadManager> mgrAllocator;
-        mgrAllocator.destroy((MessageThreadManager*) holder->mgr)
+        mgrAllocator.destroy((MessageThreadManager*) holder->mgr);
         mgrAllocator.deallocate((MessageThreadManager*) holder->mgr, 1);
         holder->mgr = NULL;
     }

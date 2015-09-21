@@ -91,6 +91,10 @@ public:
             // Execute block here, in try-catch to protect executor from fails.
             try {
                 switch (job->type) {
+                    case JOB_TYPE_EMPTY:
+                        LM_ERR("Empty job ocurred");
+                        break;
+
                     case JOB_TYPE_LAMBDA:
                         if (job->lambda != nullptr){
                             job->lambda();

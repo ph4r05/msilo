@@ -13,10 +13,11 @@
  * Type of the job queued to worker queue.
  */
 typedef enum t_job_queue_type {
-    JOB_TYPE_LAMBDA=0,
-    JOB_TYPE_SEND_RECEIVER,
-    JOB_TYPE_SEND_RECEIVER_SENDER,
-    JOB_TYPE_CLEAN,
+    JOB_TYPE_EMPTY=0,               // nothing to be done, should not happen.
+    JOB_TYPE_LAMBDA,                // execute generic lambda function
+    JOB_TYPE_SEND_RECEIVER,         // send(receiver)
+    JOB_TYPE_SEND_RECEIVER_SENDER,  // send(receiver, sender)
+    JOB_TYPE_CLEAN,                 // clean
 }t_job_queue_type;
 
 /**
@@ -54,6 +55,14 @@ public:
 
     };
 
+    // Default constructor.
+    SenderQueueJob() :
+            next{NULL},
+            prev{NULL},
+            jobId{-1},
+            type{JOB_TYPE_EMPTY},
+            lambda{NULL}
+    { }
 };
 
 // Allocator for jobs.
@@ -63,7 +72,17 @@ typedef SipsSHMAllocator<SenderQueueJob> jobAllocator;
 class SenderJobQueue
 {
 private:
-    //
+    // Job queue allocation pool.
+    // Optimization to minimize need for a new allocation.
+    SenderQueueJob * pool_head;
+    SenderQueueJob * pool_tail;
+    int pool_size;
+    boost::interprocess::interprocess_mutex pool_mutex;
+
+    // Job queue list.
+    SenderQueueJob * queue_head;
+    SenderQueueJob * queue_tail;
+
 public:
     // Allocator for allocating jobs.
     jobAllocator allocator;
@@ -79,17 +98,6 @@ public:
 
     // Flag indicating whether queue is working.
     volatile bool queue_working;
-
-    // Job queue list.
-    SenderQueueJob * queue_head;
-    SenderQueueJob * queue_tail;
-
-    // Job queue allocation pool.
-    // Optimization to minimize need for a new allocation.
-    SenderQueueJob * pool_head;
-    SenderQueueJob * pool_tail;
-    int pool_size;
-    boost::interprocess::interprocess_mutex pool_mutex;
 
     /**
      * Default constructor.

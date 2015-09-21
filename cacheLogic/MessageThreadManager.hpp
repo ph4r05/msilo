@@ -43,11 +43,12 @@ private:
     SenderJobQueue jobQueue;
 
 public:
+
     // TODO: take an allocator, rebind it to desired type in order to allocate memory in SHM.
     MessageThreadManager(const MainAllocator &alloc) :
             alloc{alloc},
             threadCache{NULL},
-            jobQueue{decltype(alloc)::rebind<SenderQueueJob>::other}
+            jobQueue{std::allocator_traits<decltype(alloc)>::rebind_alloc<SenderQueueJob> allocator}
     {
 
 
