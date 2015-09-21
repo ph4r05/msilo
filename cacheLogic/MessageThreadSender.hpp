@@ -176,11 +176,12 @@ public:
     /**
      * Queue constuctor.
      */
-    MessageThreadSender(SenderJobQueue *queue) :
+    MessageThreadSender(MessageThreadManager * aMgr, SenderJobQueue *queue) :
             queue{queue},
             senderThreadsRunning{1},
             senderThreadWaiters{0},
-            sSelf(this)
+            sSelf{this},
+            mgr{aMgr}
     {
 
     }

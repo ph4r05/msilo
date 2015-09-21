@@ -6,7 +6,7 @@
 using namespace std;
 using namespace boost::interprocess;
 
-int MessageThreadManager::dump(struct sip_msg *msg, char *owner, str uname, str host){
+int MessageThreadManager::dump(MessageThreadSender * sender, struct sip_msg *msg, char *owner, str uname, str host){
     // TODO: implement.
     return 0;
 }
@@ -14,7 +14,7 @@ int MessageThreadManager::dump(struct sip_msg *msg, char *owner, str uname, str 
 /**
  * Cleaning task, periodically called by timer thread;
  */
-int MessageThreadManager::clean(){
+int MessageThreadManager::clean(MessageThreadSender * sender){
     // TODO: implement.
     return 0;
 }

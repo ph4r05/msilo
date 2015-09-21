@@ -57,7 +57,7 @@ int thread_mgr_init_sender(thread_mgr *holder){
     // Use HEAP allocator to allocate sender.
     SipsHeapAllocator<MessageThreadSender> hAlloc;
     holder->sender = (void*) hAlloc.allocate(1, NULL);
-    hAlloc.construct((MessageThreadSender*) holder->sender, MessageThreadSender(&(mgr->jobQueue)));
+    hAlloc.construct((MessageThreadSender*) holder->sender, MessageThreadSender(&(mgr->jobQueue), mgr));
     return 0;
 }
 
@@ -84,8 +84,8 @@ int thread_mgr_dump(thread_mgr *mgr, struct sip_msg *msg, char *owner, str uname
         return -1;
     }
 
-    MessageThreadManager * manager = (MessageThreadManager*) holder->mgr;
-    return manager->dump(msg, owner, uname, host);
+    MessageThreadManager * manager = (MessageThreadManager*) mgr->mgr;
+    return manager->dump(mgr->sender, msg, owner, uname, host);
 }
 
 int thread_mgr_clean(thread_mgr *mgr) {
@@ -93,6 +93,6 @@ int thread_mgr_clean(thread_mgr *mgr) {
         return -1;
     }
 
-    MessageThreadManager * manager = (MessageThreadManager*) holder->mgr;
-    return manager->clean();
+    MessageThreadManager * manager = (MessageThreadManager*) mgr->mgr;
+    return manager->clean(mgr->sender);
 }

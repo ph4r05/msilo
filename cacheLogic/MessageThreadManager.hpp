@@ -15,6 +15,7 @@
 #include "logic.h"
 #include "MessageThreadElement.hpp"
 #include "MessageThreadMap.hpp"
+#include "MessageThreadSender.hpp"
 #include "SenderJobQueue.hpp"
 
 namespace bip = boost::interprocess;
@@ -64,12 +65,12 @@ public:
     /**
      * Dump messages. User was registered.
      */
-    int dump(struct sip_msg *msg, char *owner, str uname, str host);
+    int dump(MessageThreadSender * sender, struct sip_msg *msg, char *owner, str uname, str host);
 
     /**
      * Cleaning task, periodically called by timer thread;
      */
-    int clean();
+    int clean(MessageThreadSender * sender);
 
     /**
      * Callback from sender, send(receiver).
