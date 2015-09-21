@@ -52,15 +52,53 @@ int MessageThreadManager::tsx_callback(MessageThreadSender *sender, int code, Me
 void MessageThreadManager::send1(SenderQueueJob * job, MessageThreadSender * sender){
     // TODO: implement.
     // TODO: load data from database
+    ShmString * strReceiver = job->body.send.receiver;
+
+
 }
 
 /**
  * Callback from sender, send(receiver, sender).
  */
 void MessageThreadManager::send2(SenderQueueJob * job, MessageThreadSender * sender){
+    ShmString * strReceiver = job->body.send.receiver;
+    ShmString * strSender = job->body.send.sender;
+    if (strReceiver == NULL || strSender == NULL){
+        PH_ERR("send2: null receiver || sender");
+        return;
+    }
+
+    const MessageThreadMapKey mapKey(*strReceiver, *strSender);
+    MessageThreadMapElement elem = this->getThreadAndLock(mapKey);
+
+    // Lock a record mutex, going to operate.
+    bip::scoped_lock<bip::interprocess_mutex> lock(elem->getMutex());
+    if (elem->getMsg_cache_size() > 0){
+        // TODO: if message cache contains data: pop one message, mark as sending, send. Wait for transaction callback.
+    } else {
+        // TODO: if empty cache: load new messages from database.
+    }
+
     // TODO: implement.
-    // TODO: if message cache contains data: pop one message, mark as sending, send. Wait for transaction callback.
-    // TODO: if empty cache: load new messages from database.
     // TODO: empty cache & empty database -> set to NONE, add to pool, dealloc, stop.
 }
 
+
+MessageThreadElement * MessageThreadManager::getThreadAndLock(const MessageThreadMapKey & key) {
+    // Lock global manager mutex, map manipulation in place.
+    bip::scoped_lock<bip::interprocess_mutex> lock(this->mutex);
+
+    MessageThreadMap::const_iterator iter = threadMap.find(key);
+    if(iter == threadMap.end()){
+        // TODO: create a new one
+        MessageThreadMapElement elem = new MessageThreadElement(this->alloc);
+        elem->setReceiver(key.receiver);
+        elem->setSender(key.sender);
+
+        threadMap[key] = elem;
+        return elem;
+
+    } else {
+        return iter->second;
+    }
+}

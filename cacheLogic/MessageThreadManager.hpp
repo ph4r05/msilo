@@ -53,6 +53,12 @@ private:
     // Sender job queue, HSM allocated.
     SenderJobQueue jobQueue;
 
+    // Methods.
+    /**
+     * Locks the main mutex, loads particular thread object
+     */
+    MessageThreadElement * getThreadAndLock(const MessageThreadMapKey & key);
+
 public:
     // Take an allocator, rebind it to desired type in order to allocate memory in SHM.
     MessageThreadManager(const MainAllocator &alloc) :

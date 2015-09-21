@@ -51,9 +51,9 @@ public:
             ShmString * receiver;
             ShmString * sender;
             int fromRegistration;
-        };
+        } send;
 
-    };
+    } body;
 
     // Default constructor.
     SenderQueueJob() :

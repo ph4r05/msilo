@@ -138,11 +138,11 @@ public:
         MessageThreadElement::sendState = sendState;
     }
 
-    const boost::interprocess::interprocess_mutex &getMutex() const {
+    boost::interprocess::interprocess_mutex &getMutex() {
         return mutex;
     }
 
-    const boost::interprocess::interprocess_mutex &getMsg_cache_lock() const {
+    boost::interprocess::interprocess_mutex &getMsg_cache_lock() {
         return msg_cache_lock;
     }
 

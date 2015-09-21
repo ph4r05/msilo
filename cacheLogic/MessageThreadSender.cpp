@@ -32,7 +32,6 @@ void SenderThreadWorker::work(SenderThreadArg *arg) const{
         // <critical_section> monitor queue, poll one job from queue.
         boost::unique_lock<bip::interprocess_mutex> ulock(queue->mutex);
         ulock.lock();
-//        queue->mutex.lock();
         senderPt->senderThreadWaiters += 1;
         {
             // Maximum wait time in condition wait is x seconds so we dont deadlock (soft deadlock).
@@ -108,7 +107,6 @@ void SenderThreadWorker::send1(SenderQueueJob *job, MessageThreadSender *sender,
 void SenderThreadWorker::send2(SenderQueueJob *job, MessageThreadSender *sender, MessageThreadManager *manager) const{
     manager->send1(job, sender);
 }
-
 
 int MessageThreadSender::spawnSenderThreads() {
     int t = 0;
