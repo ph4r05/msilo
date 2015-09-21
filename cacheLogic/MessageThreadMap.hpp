@@ -26,6 +26,12 @@ typedef struct MessageThreadMapKey {
     bool operator==(const MessageThreadMapKey &other) const {
         return (receiver == other.receiver && sender == other.sender);
     }
+
+    MessageThreadMapKey() { }
+    MessageThreadMapKey(const ShmString &receiver) : receiver(receiver) { }
+    MessageThreadMapKey(const ShmString &receiver, const ShmString &sender) : receiver(receiver), sender(sender) { }
+    MessageThreadMapKey(const MessageThreadMapKey & src) : receiver(src.receiver), sender(src.sender) { }
+    MessageThreadMapKey(MessageThreadMapKey && src) noexcept : receiver(std::move(src.receiver)), sender(std::move(src.sender)){ }
 } MessageThreadMapKey;
 
 // Hash function for message thread key. hashcode().
@@ -43,10 +49,6 @@ struct MessageThreadMapKeyEquals {
     bool operator()(const MessageThreadMapKey& k1, const MessageThreadMapKey& k2) const {
         return (k1.receiver == k2.receiver && k1.sender == k2.sender);
     }
-
-//    bool operator==(const MessageThreadMapKey& k1, const MessageThreadMapKey& k2) const {
-//        return (k1.receiver == k2.receiver && k1.sender == k2.sender);
-//    }
 };
 
 // Type for the map value

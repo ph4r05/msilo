@@ -41,6 +41,7 @@ typedef struct {
 typedef struct {
     void *mgr;
     void *sender;
+    void *mapElement;
     long mid;
 } thread_tsx_callback;
 
