@@ -22,7 +22,7 @@ extern "C" {
 #undef inline
 #endif
 
-// C-style wrapper for C++ thread manager.
+// C-style wrapper for C++ thread manager & sender manager.
 typedef struct {
     void *mgr;
     void *sender;
@@ -40,6 +40,12 @@ int thread_mgr_init_sender(thread_mgr *mgr);
 
 // Destroys process local sender.
 int thread_mgr_destroy_sender(thread_mgr *mgr);
+
+// TODO: fix signature.
+int dump(thread_mgr *mgr, str receiver);
+
+// TODO: fix signature.
+int clean(thread_mgr *mgr);
 
 
 // TODO: all desired operations, bindings to m_dump.
