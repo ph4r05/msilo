@@ -80,6 +80,11 @@ public:
     int clean(MessageThreadSender * sender);
 
     /**
+     * Tsx callback.
+     */
+    int tsx_callback(MessageThreadSender * sender, int code, MessageThreadElement * mapElem, long mid);
+
+    /**
      * Callback from sender, send(receiver).
      */
     void send1(SenderQueueJob * job, MessageThreadSender * sender);

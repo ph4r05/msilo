@@ -67,6 +67,9 @@ int thread_mgr_clean(thread_mgr *mgr);
 // TM callback
 void thread_mgr_tm_callback(struct cell *t, int type, struct tmcb_params *ps);
 
+// Allocates new tsx callback data
+thread_tsx_callback * thread_mgr_alloc_tsx_data();
+
 #ifdef __cplusplus
 }
 #endif

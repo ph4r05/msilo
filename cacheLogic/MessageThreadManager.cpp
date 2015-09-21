@@ -23,6 +23,11 @@ int MessageThreadManager::clean(MessageThreadSender * sender){
     return 0;
 }
 
+int MessageThreadManager::tsx_callback(MessageThreadSender *sender, int code, MessageThreadElement *mapElem, long mid) {
+    // TODO: implement
+    return 0;
+}
+
 /**
  * Callback from sender, send(receiver).
  */

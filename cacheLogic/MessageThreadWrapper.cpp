@@ -12,6 +12,7 @@
 #include "../../../str.h"
 #include "../../../dprint.h"
 #include "../../../mem/mem.h"
+#include "../../../mem/shm_mem.h"
 #include "../../tm/t_hooks.h"
 
 thread_mgr* thread_mgr_init(){
@@ -108,6 +109,29 @@ int thread_mgr_clean(thread_mgr *mgr) {
 }
 
 void thread_mgr_tm_callback(struct cell *t, int type, struct tmcb_params *ps){
+    if (ps == NULL || ps->param==NULL){
+        PH_ERR("TsxCallback error: null ps");
+        return;
+    }
 
-    // TODO implement callback.
+    thread_tsx_callback * cb = (thread_tsx_callback*)ps->param;
+    if (cb == NULL){
+        PH_ERR("TsxCallback: CB is null");
+        return;
+    }
+
+    if (cb->mgr == NULL){
+        PH_ERR("TsxCallback: null manager");
+        return;
+    }
+
+    MessageThreadManager * manager = (MessageThreadManager*) cb->mgr;
+    manager->tsx_callback((MessageThreadSender*)cb->sender, ps->code, (MessageThreadElement*)cb->mapElement, cb->mid);
+
+    // Deallocate cb.
+    shm_free(cb);
+}
+
+thread_tsx_callback *thread_mgr_alloc_tsx_data() {
+    return (thread_tsx_callback *) shm_malloc(sizeof(thread_tsx_callback));
 }
