@@ -51,6 +51,12 @@ public:
     MessageThreadCache * next;
     MessageThreadCache * prev;
 
+
+    MessageThreadPool() :
+            tElem{NULL},
+            next{NULL},
+            prev{NULL}
+    { }
 };
 
 /**

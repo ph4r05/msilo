@@ -30,6 +30,7 @@ public:
     MessageListElement() :
             msgid{-1},
             flag{0},
+            retry_ctr{0},
             prev{NULL},
             next{NULL}
     { }
