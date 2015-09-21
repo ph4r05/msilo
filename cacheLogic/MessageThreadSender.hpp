@@ -28,12 +28,11 @@ public:
     std::weak_ptr<MessageThreadManager> wThreadMgr;
 
     // Constructor.
-    SenderThreadWorker(const std::weak_ptr<MessageThreadSender> &sender,
-                       const std::weak_ptr<MessageThreadManager> &tMgr) : wSender(sender), wThreadMgr(tMgr) { }
+    SenderThreadWorker(const std::shared_ptr<MessageThreadSender> &sender,
+                       const std::shared_ptr<MessageThreadManager> &tMgr) : wSender(sender), wThreadMgr(tMgr) { }
 
     // Main worker method.
     void operator()(senderThreadArg * arg) {
-        std::cout << "functor\n";
         LM_DBG("Sender thread %d in rank %d started\n", arg->threadId, arg->rank);
 
         // Work loop.
@@ -127,14 +126,12 @@ public:
         LM_DBG("Sender thread %d in rank %d finished\n", arg->threadId, arg->rank);
     }
 
-    // TODO: implement.
     void send1(t_senderQueueJob * job, MessageThreadSender * sender, MessageThreadManager * manager){
-
+        manager->send1(job, sender);
     }
 
-    // TODO: implement.
     void send2(t_senderQueueJob * job, MessageThreadSender * sender, MessageThreadManager * manager){
-
+        manager->send2(job, sender);
     }
 
 };
@@ -148,6 +145,7 @@ private:
     static volatile int senderThreadsRunning;
     static int senderThreadWaiters;
 
+    std::shared_ptr<MessageThreadManager> mgr;
     std::shared_ptr<MessageThreadSender> sSelf;
 
     // Job queue here, allocated on SHM, needs to be added on initialization of this sender.
@@ -226,18 +224,18 @@ public:
 
         for(t = 0; t < SENDER_THREAD_NUM && rc == 0; t++){
             try {
-                this->workers[t](std::weak_ptr<MessageThreadSender>(this));
+                this->workers[t](sSelf, mgr);
                 this->senderThreadsArgs[t].rank = t;
                 this->senderThreads[t](this->workers[t], this->senderThreadsArgs[t]);
 
             } catch(const std::system_error& e){
-                LM_ERR("Exception in creating a thread, code: %d, info: %s", e.code().value(), e.what());
                 rc = -1;
+                LM_ERR("Exception in creating a thread, code: %d, info: %s", e.code().value(), e.what());
             }
         }
 
         // Check for fails, if any, terminate sender.
-        if (rc){
+        if (rc != 0){
             this->terminateSenderThreads();
             return -1;
         }

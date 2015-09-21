@@ -47,14 +47,6 @@ int thread_mgr_dump(thread_mgr *mgr, struct sip_msg* msg, char* owner, str uname
 // Periodical cleaning, called by timer thread.
 int thread_mgr_clean(thread_mgr *mgr);
 
-// TODO: all desired operations, bindings to m_dump.
-// send_message(str * receiver);
-// send_message(str * receiver, str * sender);
-//
-
-
-
-
 #ifdef __cplusplus
 }
 #endif

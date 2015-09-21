@@ -71,6 +71,16 @@ public:
      */
     int clean();
 
+    /**
+     * Callback from sender, send(receiver).
+     */
+    void send1(t_senderQueueJob * job, MessageThreadSender * sender);
+
+    /**
+     * Callback from sender, send(receiver, sender).
+     */
+    void send2(t_senderQueueJob * job, MessageThreadSender * sender);
+
 };
 
 

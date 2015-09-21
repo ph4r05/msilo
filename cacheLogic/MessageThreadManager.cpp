@@ -18,3 +18,18 @@ int MessageThreadManager::clean(){
     // TODO: implement.
     return 0;
 }
+
+/**
+ * Callback from sender, send(receiver).
+ */
+void MessageThreadManager::send1(t_senderQueueJob * job, MessageThreadSender * sender){
+    // TODO: implement.
+}
+
+/**
+ * Callback from sender, send(receiver, sender).
+ */
+void MessageThreadManager::send2(t_senderQueueJob * job, MessageThreadSender * sender){
+    // TODO: implement.
+}
+
