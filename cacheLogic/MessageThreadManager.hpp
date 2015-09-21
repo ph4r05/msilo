@@ -28,26 +28,33 @@ private:
     // Global interprocess mutex, structure wide for fetching records.
     boost::interprocess::interprocess_mutex mutex;
 
-    // Linked list of all records with NONE status => cached in LRU fashion, if cache is too big
-    // these records are recycled in LRU policy.
-    MessageThreadCache * threadCache;
-
     // Main allocator to be used in construction of a message list elements and message thread elements.
     MainAllocator alloc;
+
+    // Linked list of all records with NONE status => cached in LRU fashion, if cache is too big
+    // these records are recycled in LRU policy.
+    boost::interprocess::interprocess_mutex thread_lru_mutex;
+    MessageThreadLRU * thread_lru_head;
+    MessageThreadLRU * thread_lru_tail;
 
     // Unordered hash map of the message thread elements.
     // Main structure for organizing message threads.
     MessageThreadMap threadMap;
+
+    // Message thread pool.
+    MessageThreadPool * thread_pool_head;
+    MessageThreadPool * thread_pool_tail;
 
     // Sender job queue, HSM allocated.
     SenderJobQueue jobQueue;
 
 public:
 
-    // TODO: take an allocator, rebind it to desired type in order to allocate memory in SHM.
+    // Take an allocator, rebind it to desired type in order to allocate memory in SHM.
     MessageThreadManager(const MainAllocator &alloc) :
             alloc{alloc},
-            threadCache{NULL},
+            thread_lru_head{NULL},
+            thread_lru_tail{NULL},
             jobQueue{std::allocator_traits<decltype(alloc)>::rebind_alloc<SenderQueueJob> allocator}
     {
 

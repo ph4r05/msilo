@@ -23,8 +23,8 @@ private:
     time_t msg_rtime;
 
     // List elements, double linking.
-    MessageElement * prev;
-    MessageElement * next;
+    MessageListElement * prev;
+    MessageListElement * next;
 
 public:
     MessageListElement() :

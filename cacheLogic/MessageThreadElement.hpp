@@ -41,9 +41,10 @@ typedef boost::unordered_set<
 class MessageThreadElement;
 
 /**
+ * Message thread pool.
  * Linked list of all unused records.
  */
-class MessageThreadCache {
+class MessageThreadPool {
 public:
     MessageThreadElement * tElem;
 
@@ -85,11 +86,11 @@ private:
     MessageIDType msg_cache_min_mid;
 
     // Linked list of cached messages in this thread to send.
-    MessageElement * msg_cache_head;
-    MessageElement * msg_cache_tail;
+    MessageListElement * msg_cache_head;
+    MessageListElement * msg_cache_tail;
 
-    // Pointer to cache entry. LRU cache entry listing.
-    MessageThreadCache * cache_entry;
+    // Pointer to pool entry.
+    MessageThreadPool * cache_entry;
 
     // Constructor with allocator.
 public:
@@ -107,6 +108,102 @@ public:
 
     }
 
+
+    ShmString getReceiver() const {
+        return receiver;
+    }
+
+    void setReceiver(ShmString receiver) {
+        MessageThreadElement::receiver = receiver;
+    }
+
+    ShmString getSender() const {
+        return sender;
+    }
+
+    void setSender(ShmString sender) {
+        MessageThreadElement::sender = sender;
+    }
+
+    const MessageThreadState &getSendState() const {
+        return sendState;
+    }
+
+    void setSendState(const MessageThreadState &sendState) {
+        MessageThreadElement::sendState = sendState;
+    }
+
+    const boost::interprocess::interprocess_mutex &getMutex() const {
+        return mutex;
+    }
+
+    void setMutex(const boost::interprocess::interprocess_mutex &mutex) {
+        MessageThreadElement::mutex = mutex;
+    }
+
+    const boost::interprocess::interprocess_mutex &getMsg_cache_lock() const {
+        return msg_cache_lock;
+    }
+
+    void setMsg_cache_lock(const boost::interprocess::interprocess_mutex &msg_cache_lock) {
+        MessageThreadElement::msg_cache_lock = msg_cache_lock;
+    }
+
+    MessageIDSet getMsg_cache_id_set() const {
+        return msg_cache_id_set;
+    }
+
+    void setMsg_cache_id_set(MessageIDSet msg_cache_id_set) {
+        MessageThreadElement::msg_cache_id_set = msg_cache_id_set;
+    }
+
+    unsigned long getMsg_cache_size() const {
+        return msg_cache_size;
+    }
+
+    void setMsg_cache_size(unsigned long msg_cache_size) {
+        MessageThreadElement::msg_cache_size = msg_cache_size;
+    }
+
+    MessageIDType getMsg_cache_max_mid() const {
+        return msg_cache_max_mid;
+    }
+
+    void setMsg_cache_max_mid(MessageIDType msg_cache_max_mid) {
+        MessageThreadElement::msg_cache_max_mid = msg_cache_max_mid;
+    }
+
+    MessageIDType getMsg_cache_min_mid() const {
+        return msg_cache_min_mid;
+    }
+
+    void setMsg_cache_min_mid(MessageIDType msg_cache_min_mid) {
+        MessageThreadElement::msg_cache_min_mid = msg_cache_min_mid;
+    }
+
+    MessageListElement *getMsg_cache_head() const {
+        return msg_cache_head;
+    }
+
+    void setMsg_cache_head(MessageListElement *msg_cache_head) {
+        MessageThreadElement::msg_cache_head = msg_cache_head;
+    }
+
+    MessageListElement *getMsg_cache_tail() const {
+        return msg_cache_tail;
+    }
+
+    void setMsg_cache_tail(MessageListElement *msg_cache_tail) {
+        MessageThreadElement::msg_cache_tail = msg_cache_tail;
+    }
+
+    MessageThreadPool *getCache_entry() const {
+        return cache_entry;
+    }
+
+    void setCache_entry(MessageThreadPool *cache_entry) {
+        MessageThreadElement::cache_entry = cache_entry;
+    }
 };
 
 #endif //OPENSIPS_1_11_2_TLS_MESSAGETHREADELEMENT_H

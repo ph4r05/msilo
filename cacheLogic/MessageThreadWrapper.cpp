@@ -2,12 +2,11 @@
 // Created by Dusan Klinec on 20.09.15.
 //
 
-#include "MessageThreadWrapper.hpp"
+#include "MessageThreadWrapper.h"
 #include "MessageThreadManager.hpp"
 #include "MessageThreadSender.hpp"
 #include "SipsSHMAllocator.hpp"
 #include "SipsHeapAllocator.hpp"
-
 
 thread_mgr* thread_mgr_init(){
     // use SHM allocator to create manager (sender queue, maps, ...).
@@ -25,6 +24,7 @@ thread_mgr* thread_mgr_init(){
 
 int thread_mgr_destroy(thread_mgr *holder){
     if (holder == NULL){
+        LM_ERR("Holder is already null in thread_mgr_destroy");
         return -1;
     }
 
@@ -44,13 +44,14 @@ int thread_mgr_destroy(thread_mgr *holder){
 }
 
 int thread_mgr_init_sender(thread_mgr *holder){
-    // TODO: use HEAP allocator to allocate sender.
-    if (holder == NULL){
+    if (holder == NULL || holder->mgr == NULL){
+        LM_ERR("Holder or manager is null in thread_mgr_init_sender");
         return -1;
     }
 
     MessageThreadManager * mgr = (MessageThreadManager*) holder->mgr;
 
+    // Use HEAP allocator to allocate sender.
     SipsHeapAllocator<MessageThreadSender> hAlloc;
     holder->sender = (void*) hAlloc.allocate(1, NULL);
     hAlloc.construct((MessageThreadSender*) holder->sender, MessageThreadSender(&(mgr->jobQueue)));
@@ -58,9 +59,14 @@ int thread_mgr_init_sender(thread_mgr *holder){
 }
 
 int thread_mgr_destroy_sender(thread_mgr *holder){
-    // TODO: implement.
-    if (holder == NULL || holder->sender == NULL){
+    if (holder == NULL){
+        LM_ERR("Holder is null");
         return -1;
+    }
+
+    if (holder->sender == NULL){
+        LM_DBG("Sender is already destroyed");
+        return 0;
     }
 
     SipsHeapAllocator<MessageThreadSender> hAlloc;

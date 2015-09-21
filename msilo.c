@@ -69,6 +69,7 @@
 
 #include "ms_msg_list.h"
 #include "msfuncs.h"
+#include "cacheLogic/MessageThreadWrapper.h"
 
 #define MAX_DEL_KEYS	1
 #define NR_KEYS			10
@@ -151,32 +152,13 @@ unsigned short ms_snd_time_avp_type;
 
 str msg_type = str_init("MESSAGE");
 
-/** Sender thread */
-#define SENDER_THREAD_NUM 1
-#define SENDER_THREAD_WAIT_MS 100
-static volatile int senderThreadsRunning;
-static int senderThreadWaiters;
+/** Message thread manager */
+thread_mgr* thread_manager;
 
-pthread_mutex_t * pSenderThreadQueueCondMutex = NULL;
-pthread_mutexattr_t senderThreadQueueCondMutexAttr;
-
-pthread_cond_t * pSenderThreadQueueCond = NULL;
-pthread_condattr_t senderThreadQueueCondAttr;
-
-typedef struct t_senderThreadArg_ {
-	int threadId;
-	int rank;
-
-} t_senderThreadArg, *senderThreadArg;
-t_senderThreadArg senderThreadsArgs[SENDER_THREAD_NUM];
-pthread_t senderThreads[SENDER_THREAD_NUM];
-
+static int initThreadManager();
+static int destroyThreadManager();
 static int initSenderThreads();
-static int destroySenderThreads();
-static int initChildSenderThreads();
-static int spawnSenderThreads();
 static int terminateSenderThreads();
-static void *senderThreadMain(void *varg);
 
 /** module functions */
 static int mod_init(void);
@@ -442,7 +424,7 @@ static int mod_init(void)
 		ms_outbound_proxy.len = strlen(ms_outbound_proxy.s);
 
 	// Sender thread startup.
-	return initSenderThreads() == 0 ? 0 : -1;
+	return initThreadManager() == 0 ? 0 : -1;
 }
 
 /**
@@ -473,7 +455,7 @@ static int child_init(int rank)
 	}
 
 	// Sender threads.
-	return initChildSenderThreads() == 0 ? 0 : -1;
+	return initSenderThreads() == 0 ? 0 : -1;
 }
 
 /**
@@ -1137,14 +1119,13 @@ void m_clean_silo(unsigned int ticks, void *param)
 	}
 }
 
-
 /**
  * destroy function
  */
 void destroy(void)
 {
 	LM_DBG("msilo destroy module ...\n");
-	destroySenderThreads();
+	destroyThreadManager();
 	msg_list_free(ml);
 
 	if(db_con && msilo_dbf.close)
@@ -1449,29 +1430,12 @@ int check_message_support(struct sip_msg* msg)
 /**
  * Called when server starts so shared variables for all processes are allocated and initialized.
  */
-static int initSenderThreads(){
-	senderThreadsRunning = 1;
-	senderThreadWaiters = 0;
-
-	/* Initialise attribute to mutex. */
-	pthread_mutexattr_init(&senderThreadQueueCondMutexAttr);
-	pthread_mutexattr_setpshared(&senderThreadQueueCondMutexAttr, PTHREAD_PROCESS_SHARED);
-
-	/* Allocate memory to pmutex here. */
-	pSenderThreadQueueCondMutex = (pthread_mutex_t *)shm_malloc(sizeof(pthread_mutex_t));
-
-	/* Initialise mutex. */
-	pthread_mutex_init(pSenderThreadQueueCondMutex, &senderThreadQueueCondMutexAttr);
-
-	/* Initialise attribute to condition. */
-	pthread_condattr_init(&senderThreadQueueCondAttr);
-	pthread_condattr_setpshared(&senderThreadQueueCondAttr, PTHREAD_PROCESS_SHARED);
-
-	/* Allocate memory to pcond here. */
-	pSenderThreadQueueCond = (pthread_cond_t *)shm_malloc(sizeof(pthread_cond_t));
-
-	/* Initialise condition. */
-	pthread_cond_init(pSenderThreadQueueCond, &senderThreadQueueCondAttr);
+static int initThreadManager(){
+	thread_manager = thread_mgr_init();
+	if (thread_manager == NULL){
+		LM_ERR("Thread manager could not be initialized");
+		return -1;
+	}
 
 	return 0;
 }
@@ -1479,130 +1443,21 @@ static int initSenderThreads(){
 /**
  * Terminates running sender threads.
  */
-static int destroySenderThreads(){
-	terminateSenderThreads();
-	// TODO: wait for termination so mutex & conditions are not destroyed before memory release.
-
-//	TODO: Clean up.
-//	pthread_mutex_destroy(pmutex);
-//	pthread_mutexattr_destroy(&attrmutex);
-//	pthread_cond_destroy(pcond);
-//	pthread_condattr_destroy(&attrcond);
-
-	return 0;
+static int destroyThreadManager(){
+	thread_mgr_destroy_sender(thread_manager);
+	return thread_mgr_destroy(thread_manager);
 }
 
 /**
  * Called when worker process is initialized. Spawns sender threads.
  */
-static int initChildSenderThreads(){
-	return spawnSenderThreads();
-}
-
-/**
- * Routine starts given amount of sender threads.
- */
-static int spawnSenderThreads(){
-	int t = 0;
-	int rc = 0;
-	senderThreadsRunning = 1;
-
-	for(t = 0; t < SENDER_THREAD_NUM; t++){
-		rc = pthread_create(&senderThreads[t], NULL, senderThreadMain, (void *)&senderThreadsArgs[t]);
-		if (rc){
-			LM_ERR("ERROR; return code from pthread_create() is %d\n", rc);
-			break;
-		}
-	}
-
-	// Check for fails.
-	if (rc){
-		terminateSenderThreads();
-		return -1;
-	}
-
-	return 0;
+static int initSenderThreads(){
+	return thread_mgr_init_sender(thread_manager);
 }
 
 /**
  * Sets all sender threads to terminate.
  */
 static int terminateSenderThreads(){
-	// Running flag set to false.
-	senderThreadsRunning = 0;
-	if (pSenderThreadQueueCondMutex == NULL || pSenderThreadQueueCond == NULL){
-		return -1;
-	}
-
-	// Broadcast signal to check the queue so all sender threads are woken up in order to terminate.
-	pthread_mutex_lock(pSenderThreadQueueCondMutex);
-	if (pSenderThreadQueueCond != NULL) {
-		pthread_cond_broadcast(pSenderThreadQueueCond);
-	}
-	pthread_mutex_unlock(pSenderThreadQueueCondMutex);
-
-	return 0;
+	return thread_mgr_destroy_sender(thread_manager);
 }
-
-/**
- * Main sender thread.
- */
-static void *senderThreadMain(void *varg)
-{
-	senderThreadArg arg = (senderThreadArg) varg;
-	LM_DBG("Sender thread %d in rank %d started\n", arg->threadId, arg->rank);
-
-	// Work loop.
-	while(senderThreadsRunning){
-		PEXPjJobEntry * job = NULL;
-		int signaled = 0;
-
-		// Maximum wait time in condition wait is x seconds so we dont deadlock (soft deadlock).
-		struct timespec timeToWait;
-		struct timeval now;
-		gettimeofday(&now, NULL);
-		timeToWait.tv_sec = now.tv_sec + ((SENDER_THREAD_WAIT_MS) / 1000);
-		timeToWait.tv_nsec = (now.tv_usec+1000UL*((SENDER_THREAD_WAIT_MS) % 1000))*1000UL;
-
-		// <critical_section> monitor queue, poll one job from queue.
-		pthread_mutex_lock(pSenderThreadQueueCondMutex);
-		senderThreadWaiters += 1;
-		{
-			// If queue is empty, wait for insertion signal.
-			if ([_jobQueue isEmpty]) {
-				// Wait signaling, note mutex is atomically unlocked while waiting.
-				// CPU cycles are saved here since thread blocks while waiting for new jobs.
-				signaled = pthread_cond_timedwait(pSenderThreadQueueCond, pSenderThreadQueueCondMutex, &timeToWait);
-				senderThreadWaiters -= 1;
-			}
-
-			// Check job queue again.
-			job = [_jobQueue popFront];
-		}
-		pthread_mutex_unlock(pSenderThreadQueueCondMutex);
-		// </critical_section>
-
-		// If signaling ended with command to quit.
-		if (!senderThreadsRunning){
-			break;
-		}
-
-		// Job may be nil. If is, continue with waiting.
-		if (job == NULL || job.isCancelled){
-			continue;
-		}
-
-		// Execute block here, in try-catch to protect executor from fails.
-		job.block();
-
-		// Job is finished. If async, signalize semaphore.
-		job.isFinished = YES;
-		if (!job.async && job.finishSemaphore != nil){
-			dispatch_semaphore_signal(job.finishSemaphore);
-		}
-	}
-
-	LM_DBG("Sender thread %d in rank %d finished\n", arg->threadId, arg->rank);
-	// TODO: Dealloc thread argument structure.
-}
-
