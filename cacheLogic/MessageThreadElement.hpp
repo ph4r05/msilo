@@ -48,9 +48,8 @@ class MessageThreadPool {
 public:
     MessageThreadElement * tElem;
 
-    MessageThreadCache * next;
-    MessageThreadCache * prev;
-
+    MessageThreadPool * next;
+    MessageThreadPool * prev;
 
     MessageThreadPool() :
             tElem{NULL},
@@ -143,24 +142,12 @@ public:
         return mutex;
     }
 
-    void setMutex(const boost::interprocess::interprocess_mutex &mutex) {
-        MessageThreadElement::mutex = mutex;
-    }
-
     const boost::interprocess::interprocess_mutex &getMsg_cache_lock() const {
         return msg_cache_lock;
     }
 
-    void setMsg_cache_lock(const boost::interprocess::interprocess_mutex &msg_cache_lock) {
-        MessageThreadElement::msg_cache_lock = msg_cache_lock;
-    }
-
-    MessageIDSet getMsg_cache_id_set() const {
+    MessageIDSet& getMsg_cache_id_set() {
         return msg_cache_id_set;
-    }
-
-    void setMsg_cache_id_set(MessageIDSet msg_cache_id_set) {
-        MessageThreadElement::msg_cache_id_set = msg_cache_id_set;
     }
 
     unsigned long getMsg_cache_size() const {

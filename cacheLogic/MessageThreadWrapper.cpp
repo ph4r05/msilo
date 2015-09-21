@@ -29,7 +29,7 @@ thread_mgr* thread_mgr_init(){
 
 int thread_mgr_destroy(thread_mgr *holder){
     if (holder == NULL){
-        LM_ERR("Holder is already null in thread_mgr_destroy");
+        PH_ERR("Holder is already null in thread_mgr_destroy\n");
         return -1;
     }
 
@@ -50,7 +50,7 @@ int thread_mgr_destroy(thread_mgr *holder){
 
 int thread_mgr_init_sender(thread_mgr *holder){
     if (holder == NULL || holder->mgr == NULL){
-        LM_ERR("Holder or manager is null in thread_mgr_init_sender");
+        PH_ERR("Holder or manager is null in thread_mgr_init_sender\n");
         return -1;
     }
 
@@ -59,18 +59,18 @@ int thread_mgr_init_sender(thread_mgr *holder){
     // Use HEAP allocator to allocate sender.
     SipsHeapAllocator<MessageThreadSender> hAlloc;
     holder->sender = (void*) hAlloc.allocate(1, NULL);
-    hAlloc.construct((MessageThreadSender*) holder->sender, MessageThreadSender(&(mgr->jobQueue), mgr));
+    hAlloc.construct((MessageThreadSender*) holder->sender, MessageThreadSender(mgr, mgr->getJobQueuePtr()));
     return 0;
 }
 
 int thread_mgr_destroy_sender(thread_mgr *holder){
     if (holder == NULL){
-        LM_ERR("Holder is null");
+        PH_ERR("Holder is null\n");
         return -1;
     }
 
     if (holder->sender == NULL){
-        LM_DBG("Sender is already destroyed");
+        PH_DBG("Sender is already destroyed\n");
         return 0;
     }
 
@@ -87,7 +87,7 @@ int thread_mgr_dump(thread_mgr *mgr, struct sip_msg *msg, char *owner, str uname
     }
 
     MessageThreadManager * manager = (MessageThreadManager*) mgr->mgr;
-    return manager->dump(mgr->sender, msg, owner, uname, host);
+    return manager->dump((MessageThreadSender*)mgr->sender, msg, owner, uname, host);
 }
 
 int thread_mgr_clean(thread_mgr *mgr) {
@@ -96,5 +96,9 @@ int thread_mgr_clean(thread_mgr *mgr) {
     }
 
     MessageThreadManager * manager = (MessageThreadManager*) mgr->mgr;
-    return manager->clean(mgr->sender);
+    return manager->clean((MessageThreadSender*)mgr->sender);
+}
+
+void thread_mgr_tm_callback(struct cell *t, int type, struct tmcb_params *ps){
+    // TODO implement callback.
 }

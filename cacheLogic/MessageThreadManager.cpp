@@ -6,6 +6,11 @@
 using namespace std;
 using namespace boost::interprocess;
 
+
+MessageThreadManager::MessageThreadManager(const MessageThreadManager &src) {
+    this->alloc = src.getAlloc();
+}
+
 int MessageThreadManager::dump(MessageThreadSender * sender, struct sip_msg *msg, char *owner, str uname, str host){
     // TODO: implement.
     return 0;
@@ -22,14 +27,14 @@ int MessageThreadManager::clean(MessageThreadSender * sender){
 /**
  * Callback from sender, send(receiver).
  */
-void MessageThreadManager::send1(t_senderQueueJob * job, MessageThreadSender * sender){
+void MessageThreadManager::send1(SenderQueueJob * job, MessageThreadSender * sender){
     // TODO: implement.
 }
 
 /**
  * Callback from sender, send(receiver, sender).
  */
-void MessageThreadManager::send2(t_senderQueueJob * job, MessageThreadSender * sender){
+void MessageThreadManager::send2(SenderQueueJob * job, MessageThreadSender * sender){
     // TODO: implement.
 }
 

@@ -32,8 +32,8 @@ typedef struct MessageThreadMapKey {
 struct MessageThreadMapKeyHasher {
     std::size_t operator()(const MessageThreadMapKey& k) const {
         std::size_t seed = 0;
-        boost::hash_combine(seed,boost::hash_value(k.receiver));
-        boost::hash_combine(seed,boost::hash_value(k.sender));
+        boost::hash_combine(seed, boost::hash_range(k.receiver.begin(), k.receiver.end()));
+        boost::hash_combine(seed, boost::hash_range(k.sender.begin(), k.sender.end()));
         return seed;
     }
 };
@@ -41,12 +41,12 @@ struct MessageThreadMapKeyHasher {
 // Hash function for message thread key. hashcode().
 struct MessageThreadMapKeyEquals {
     bool operator()(const MessageThreadMapKey& k1, const MessageThreadMapKey& k2) const {
-        return (k1.receiver == k2.receiver && k1.sender == k2.sender) ? 1 : 0;
+        return (k1.receiver == k2.receiver && k1.sender == k2.sender);
     }
 
-    bool operator==(const MessageThreadMapKey& k1, const MessageThreadMapKey& k2) const {
-        return (k1.receiver == k2.receiver && k1sender == k2.sender);
-    }
+//    bool operator==(const MessageThreadMapKey& k1, const MessageThreadMapKey& k2) const {
+//        return (k1.receiver == k2.receiver && k1.sender == k2.sender);
+//    }
 };
 
 // Type for the map value

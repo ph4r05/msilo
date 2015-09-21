@@ -30,7 +30,7 @@ public:
     SenderQueueJob * prev;
 
     // Sequential job id.
-    unsigned long jobId;
+    long jobId;
 
     // Time of job creation.
     time_t jobCreated;
@@ -102,7 +102,7 @@ public:
     /**
      * Default constructor.
      */
-    SenderJobQueue(jobAllocator alloc = {}) :
+    SenderJobQueue(const jobAllocator &alloc = {}) :
             queue_working{1},
             queue_size{0},
             queue_head{NULL},
@@ -112,8 +112,8 @@ public:
             pool_size{0},
             allocator{alloc}
     {
-        LM_DBG("Allcating job queue\n");
-        initJobPool();
+        PH_DBG("Allocating job queue\n");
+        this->initJobPool();
     }
 
     /**
@@ -121,14 +121,14 @@ public:
      */
     void initJobPool(){
         const int poolSize = DEFAULT_POOL_SIZE;
-        SenderQueueJob jobTpl();
+        SenderQueueJob jobTpl;
 
         // Lock pool mutex, allocate X jobs in a row and init pool linked list.
-        scoped_lock<interprocess_mutex> lock(this->pool_mutex);
-        SenderQueueJob * jobs = allocator.allocate(poolSize, NULL);
+        bip::scoped_lock<bip::interprocess_mutex> lock(this->pool_mutex);
+        SenderQueueJob * jobs = this->allocator.allocate(poolSize, NULL);
         for(int i = 0; i < poolSize; i++) {
             SenderQueueJob * cJob = jobs + i;
-            allocator.construct(cJob, jobTpl);
+            this->allocator.construct(cJob, jobTpl);
 
             if (i==0){
                 this->pool_head = cJob;
@@ -157,7 +157,7 @@ public:
      * Used when some queue threads are about to terminate.
      */
     int signalAll(){
-        scoped_lock<interprocess_mutex> lock(this->mutex);
+        bip::scoped_lock<bip::interprocess_mutex> lock(this->mutex);
         this->cond_newjob.notify_all();
         return 0;
     }
@@ -169,7 +169,7 @@ public:
     SenderQueueJob * newJob(){
         // Take from pool, if non-empty, create otherwise.
         {
-            scoped_lock<interprocess_mutex> lock(this->pool_mutex);
+            bip::scoped_lock<bip::interprocess_mutex> lock(this->pool_mutex);
             if (this->pool_size > 0 && this->pool_head != NULL){
                 SenderQueueJob * ret = this->pool_head;
                 this->pool_head = ret->next;
@@ -203,7 +203,7 @@ public:
     void destroyJob(SenderQueueJob *job){
         // Return to pool, if non-full, deallocate otherwise.
         {
-            scoped_lock<interprocess_mutex> lock(this->pool_mutex);
+            bip::scoped_lock<bip::interprocess_mutex> lock(this->pool_mutex);
             if (this->pool_size < DEFAULT_POOL_SIZE){
                 job->next = NULL;
                 job->prev = NULL;
@@ -283,7 +283,7 @@ public:
      * Locks the queue and pushbacks.
      */
     void lockAndPushBack(SenderQueueJob * job){
-        scoped_lock<interprocess_mutex> lock(this->mutex);
+        bip::scoped_lock<bip::interprocess_mutex> lock(this->mutex);
         this->pushBack(job);
     }
 };

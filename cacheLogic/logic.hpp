@@ -18,10 +18,13 @@
 #include <memory>
 #include <thread>
 #include <string>
+#include <cstring>
 
 #include "SipsSHMAllocator.hpp"
 #include "SipsHeapAllocator.hpp"
 #include "../../../dprint.h"
+#include "../../../str.h"
+#include "../../../mem/mem.h"
 
 // Namespace shortcut.
 namespace bip = boost::interprocess;
@@ -34,5 +37,30 @@ typedef SipsSHMAllocator<char> CharShmAllocator;
 
 // String with allocator on shared memory
 typedef bip::basic_string <char, std::char_traits<char>, CharShmAllocator> ShmString;
+
+// Simple hasher for ShmString.
+std::size_t hash_value(ShmString const& b) {
+	return boost::hash_range(b.begin(), b.end());
+}
+
+#define PH_DBG( fmt, args...)                   		\
+				do {                            		\
+                    LM_DBG(fmt, ##args);        		\
+				}while(0)
+
+#define PH_INFO( fmt, args...) 							\
+				do { 									\
+                    LM_INFO(fmt, ##args); 				\
+				}while(0)
+
+#define PH_WARN( fmt, args...)  						\
+				do { 									\
+                    LM_WARN(fmt, ##args); 				\
+				}while(0)
+
+#define PH_ERR( fmt, args...)                            \
+				do {                                     \
+                    LM_ERR(fmt, ##args);                 \
+				}while(0)
 
 #endif //OPENSIPS_1_11_2_TLS_LOGIC_H

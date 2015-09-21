@@ -5,8 +5,6 @@
 #ifndef OPENSIPS_1_11_2_TLS_MESSAGETHREADWRAPPER_H
 #define OPENSIPS_1_11_2_TLS_MESSAGETHREADWRAPPER_H
 
-
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -18,6 +16,17 @@ extern "C" {
 #include "../../../str.h"
 #include "../../../dprint.h"
 #include "../../../mem/mem.h"
+
+//#include "../../../parser/parse_from.h"
+//#include "../../../parser/parse_content.h"
+//#include "../../../parser/contact/parse_contact.h"
+//#include "../../../parser/parse_allow.h"
+//#include "../../../parser/parse_methods.h"
+//#include "../../tm/tm_load.h"
+struct cell;
+struct tmcb_params;
+struct sip_msg;
+
 #ifdef __cplusplus
 #undef inline
 #endif
@@ -46,6 +55,9 @@ int thread_mgr_dump(thread_mgr *mgr, struct sip_msg* msg, char* owner, str uname
 
 // Periodical cleaning, called by timer thread.
 int thread_mgr_clean(thread_mgr *mgr);
+
+// TM callback
+void thread_mgr_tm_callback(struct cell *t, int type, struct tmcb_params *ps);
 
 #ifdef __cplusplus
 }

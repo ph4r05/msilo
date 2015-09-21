@@ -21,10 +21,11 @@
 #include "SipsHeapAllocator.hpp"
 #include "SipsSHMAllocator.hpp"
 
-namespace bip = boost::interprocess;
-
 // Main allocator, will be used after rebind call to allocate list elements.
 typedef SipsSHMAllocator<MessageListElement> MainAllocator;
+
+// Forward declaration for sender.
+class MessageThreadSender;
 
 // Main mesage thread manager.
 class MessageThreadManager {
@@ -38,8 +39,8 @@ private:
     // Linked list of all records with NONE status => cached in LRU fashion, if cache is too big
     // these records are recycled in LRU policy.
     boost::interprocess::interprocess_mutex thread_lru_mutex;
-    MessageThreadLRU * thread_lru_head;
-    MessageThreadLRU * thread_lru_tail;
+    MessageThreadPool * thread_lru_head;
+    MessageThreadPool * thread_lru_tail;
 
     // Unordered hash map of the message thread elements.
     // Main structure for organizing message threads.
@@ -53,17 +54,20 @@ private:
     SenderJobQueue jobQueue;
 
 public:
-
     // Take an allocator, rebind it to desired type in order to allocate memory in SHM.
     MessageThreadManager(const MainAllocator &alloc) :
             alloc{alloc},
             thread_lru_head{NULL},
-            thread_lru_tail{NULL},
-            jobQueue{std::allocator_traits<decltype(alloc)>::rebind_alloc<SenderQueueJob> allocator}
+            thread_lru_tail{NULL}, //SenderQueueJob
+            jobQueue{MainAllocator::rebind<SenderQueueJob>::other(alloc)}
     {
 
-
     }
+
+    MessageThreadManager() : MessageThreadManager((MainAllocator())) { }
+
+    // Copy constructor.
+    MessageThreadManager(const MessageThreadManager& src);
 
     /**
      * Dump messages. User was registered.
@@ -78,13 +82,24 @@ public:
     /**
      * Callback from sender, send(receiver).
      */
-    void send1(t_senderQueueJob * job, MessageThreadSender * sender);
+    void send1(SenderQueueJob * job, MessageThreadSender * sender);
 
     /**
      * Callback from sender, send(receiver, sender).
      */
-    void send2(t_senderQueueJob * job, MessageThreadSender * sender);
+    void send2(SenderQueueJob * job, MessageThreadSender * sender);
 
+    const SenderJobQueue &getJobQueue() const {
+        return jobQueue;
+    }
+
+    SenderJobQueue * getJobQueuePtr() {
+        return &jobQueue;
+    }
+
+    const MainAllocator &getAlloc() const {
+        return alloc;
+    }
 };
 
 
