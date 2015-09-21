@@ -56,7 +56,7 @@ typedef MessageThreadElement * MessageThreadMapElement;
 typedef std::pair<const MessageThreadMapKey, MessageThreadMapElement> MessageThreadMapValueType;
 
 // Allocator for pair value, allocating in shared memory.
-typedef SipsAllocator<MessageThreadMapValueType> MessageThreadMapAllocator;
+typedef SipsSHMAllocator<MessageThreadMapValueType> MessageThreadMapAllocator;
 
 // Message thread map.
 typedef boost::unordered_map<   MessageThreadMapKey,            // Map key type.

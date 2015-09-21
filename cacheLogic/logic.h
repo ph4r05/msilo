@@ -11,7 +11,9 @@
 #include <boost/interprocess/containers/set.hpp>
 #include <boost/unordered_map.hpp>
 #include <boost/unordered_set.hpp>
-#include "SipsAllocator.hpp"
+#include "SipsSHMAllocator.hpp"
+#include "SipsHeapAllocator.hpp"
+#include "../../dprint.h"
 
 // Namespace shortcut.
 namespace bip = boost::interprocess;
@@ -20,7 +22,7 @@ namespace bip = boost::interprocess;
 typedef long MessageIDType;
 
 // Allocator for strings.
-typedef SipsAllocator<char> CharShmAllocator;
+typedef SipsSHMAllocator<char> CharShmAllocator;
 
 // String with allocator on shared memory
 typedef bip::basic_string <char, std::char_traits<char>, CharShmAllocator> ShmString;

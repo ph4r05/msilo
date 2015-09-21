@@ -84,33 +84,36 @@ public:
             }
 
             // Job may be nil. If is, continue with waiting.
-            if (job == std::nullptr){
+            if (job == nullptr){
                 continue;
             }
 
             // Execute block here, in try-catch to protect executor from fails.
-            // TODO: try-catch
-            switch(job->type){
-                case JOB_TYPE_LAMBDA:
-                    if (job->lambda != std::nullptr){
-                        job->lambda();
-                    }
-                    break;
+            try {
+                switch (job->type) {
+                    case JOB_TYPE_LAMBDA:
+                        if (job->lambda != nullptr){
+                            job->lambda();
+                        }
+                        break;
 
-                case JOB_TYPE_SEND_RECEIVER:
-                    this->send1(job, senderPt, mgrPt);
-                    break;
+                    case JOB_TYPE_SEND_RECEIVER:
+                        this->send1(job, senderPt, mgrPt);
+                        break;
 
-                case JOB_TYPE_SEND_RECEIVER_SENDER:
-                    this->send2(job, senderPt, mgrPt);
-                    break;
+                    case JOB_TYPE_SEND_RECEIVER_SENDER:
+                        this->send2(job, senderPt, mgrPt);
+                        break;
 
-                case JOB_TYPE_CLEAN:
-                    // TODO: implement.
-                    break;
+                    case JOB_TYPE_CLEAN:
+                        // TODO: implement.
+                        break;
 
-                default:
-                    break;
+                    default:
+                        break;
+                }
+            } catch (...) {
+                cout << "default exception";
             }
 
             // Deallocate job, using shared memory allocator.
@@ -217,17 +220,23 @@ public:
         int rc = 0;
         this->senderThreadsRunning = 1;
 
-        for(t = 0; t < SENDER_THREAD_NUM; t++){
-            this->workers[t](std::weak_ptr<MessageThreadSender>(this));
-            this->senderThreadsArgs[t].rank = t;
-            this->senderThreads[t](this->workers[t], this->senderThreadsArgs[t]);
+        for(t = 0; t < SENDER_THREAD_NUM && rc == 0; t++){
+            try {
+                this->workers[t](std::weak_ptr<MessageThreadSender>(this));
+                this->senderThreadsArgs[t].rank = t;
+                this->senderThreads[t](this->workers[t], this->senderThreadsArgs[t]);
+
+            } catch(const std::system_error& e){
+                LM_ERR("Exception in creating a thread, code: %d, info: %s", e.code().value(), e.what());
+                rc = -1;
+            }
         }
 
-        // TODO: Check for fails.
-//        if (rc){
-//            this->terminateSenderThreads();
-//            return -1;
-//        }
+        // Check for fails, if any, terminate sender.
+        if (rc){
+            this->terminateSenderThreads();
+            return -1;
+        }
 
         return 0;
     }

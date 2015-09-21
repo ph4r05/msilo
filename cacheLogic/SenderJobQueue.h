@@ -104,6 +104,7 @@ public:
             pool_size{0},
             allocator{alloc}
     {
+        LM_DBG("Allcating job queue\n");
         initJobPool();
     }
 

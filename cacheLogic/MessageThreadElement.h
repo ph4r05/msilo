@@ -28,7 +28,7 @@ typedef enum MessageThreadState {
 namespace bip = boost::interprocess;
 
 // Allocator for pair value, allocating in shared memory.
-typedef SipsAllocator<MessageIDType> MessageIDAllocator;
+typedef SipsSHMAllocator<MessageIDType> MessageIDAllocator;
 
 // Message ID set.
 typedef boost::unordered_set<
@@ -55,7 +55,7 @@ public:
 
 /**
  * Structure for one per user msilo management.
- * "receiver:sender" -> _msilo_ctl_el
+ * "receiver:sender" -> MessageThreadElement
  */
 class MessageThreadElement {
 private:

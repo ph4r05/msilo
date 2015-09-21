@@ -14,11 +14,12 @@
 #include "logic.h"
 #include "MessageThreadElement.h"
 #include "MessageThreadMap.h"
+#include "SenderJobQueue.h"
 
 namespace bip = boost::interprocess;
 
 // Main allocator, will be used after rebind call to allocate list elements.
-typedef SipsAllocator<MessageListElement> MainAllocator;
+typedef SipsSHMAllocator<MessageListElement> MainAllocator;
 
 // Main mesage thread manager.
 class MessageThreadManager {
@@ -37,11 +38,15 @@ private:
     // Main structure for organizing message threads.
     MessageThreadMap threadMap;
 
+    // Sender job queue, HSM allocated.
+    SenderJobQueue jobQueue;
+
 public:
     // TODO: take an allocator, rebind it to desired type in order to allocate memory in SHM.
     MessageThreadManager(const MainAllocator &alloc) :
             alloc{alloc},
-            threadCache{NULL}
+            threadCache{NULL},
+            jobQueue{decltype(alloc)::rebind<SenderQueueJob>::other}
     {
 
 
