@@ -1443,6 +1443,9 @@ static int initThreadManager(void){
 		return -1;
 	}
 
+	// Make Db & TM API available to the C++ code.
+	thread_manager->msilo_dbf = &msilo_dbf;
+	thread_manager->tmb = &tmb;
 	return 0;
 }
 

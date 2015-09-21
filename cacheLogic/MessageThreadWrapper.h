@@ -13,16 +13,12 @@ extern "C" {
 #ifdef __cplusplus
 #define inline
 #endif
+
 #include "../../../str.h"
 #include "../../../dprint.h"
 #include "../../../mem/mem.h"
+#include "common.h"
 
-//#include "../../../parser/parse_from.h"
-//#include "../../../parser/parse_content.h"
-//#include "../../../parser/contact/parse_contact.h"
-//#include "../../../parser/parse_allow.h"
-//#include "../../../parser/parse_methods.h"
-//#include "../../tm/tm_load.h"
 struct cell;
 struct tmcb_params;
 struct sip_msg;
@@ -30,20 +26,6 @@ struct sip_msg;
 #ifdef __cplusplus
 #undef inline
 #endif
-
-// C-style wrapper for C++ thread manager & sender manager.
-typedef struct {
-    void *mgr;
-    void *sender;
-} thread_mgr;
-
-// Structure to be passed as a parameter to the transaction module.
-typedef struct {
-    void *mgr;
-    void *sender;
-    void *mapElement;
-    long mid;
-} thread_tsx_callback;
 
 // Initializes new thread manager. Memory allocated by this call is deallocated by destroy call.
 // Should be called in global init before forking. Allocates memory on SHM.
