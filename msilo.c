@@ -930,6 +930,11 @@ static int m_dump(struct sip_msg* msg, char* owner, char* str2)
 		goto error;
 	}
 
+	// Check if thread manager will handle this. In that case old processing is not needed.
+	if (thread_mgr_dump(thread_manager, msg, owner, puri.user, puri.host)){
+		return 1;
+	}
+
 	time(&dumpId);
 
 	db_vals[0].type = DB_STR;
@@ -1047,6 +1052,7 @@ void m_clean_silo(unsigned int ticks, void *param)
 	long iters = 0;
 
 	LM_DBG("cleaning stored messages - %d\n", ticks);
+	thread_mgr_clean(thread_manager);
 
 	msg_list_check(ml); // Separates message with DONE / ERROR in sent_list to the done_list.
 	mle = p = msg_list_reset(ml); // Extracts done_list and returns it here.

@@ -61,7 +61,15 @@ public:
 
     }
 
+    /**
+     * Dump messages. User was registered.
+     */
+    int dump(struct sip_msg *msg, char *owner, str uname, str host);
 
+    /**
+     * Cleaning task, periodically called by timer thread;
+     */
+    int clean();
 
 };
 

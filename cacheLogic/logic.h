@@ -13,7 +13,7 @@
 #include <boost/unordered_set.hpp>
 #include "SipsSHMAllocator.hpp"
 #include "SipsHeapAllocator.hpp"
-#include "../../dprint.h"
+#include "../../../dprint.h"
 
 // Namespace shortcut.
 namespace bip = boost::interprocess;

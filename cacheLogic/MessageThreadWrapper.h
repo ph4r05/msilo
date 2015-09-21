@@ -15,9 +15,9 @@ extern "C" {
 #ifdef __cplusplus
 #define inline
 #endif
-#include "../../str.h"
-#include "../../dprint.h"
-#include "../../mem/mem.h"
+#include "../../../str.h"
+#include "../../../dprint.h"
+#include "../../../mem/mem.h"
 #ifdef __cplusplus
 #undef inline
 #endif
@@ -41,12 +41,11 @@ int thread_mgr_init_sender(thread_mgr *mgr);
 // Destroys process local sender.
 int thread_mgr_destroy_sender(thread_mgr *mgr);
 
-// TODO: fix signature.
-int dump(thread_mgr *mgr, str receiver);
+// Dumping messages. User was registered when this gets called.
+int thread_mgr_dump(thread_mgr *mgr, struct sip_msg* msg, char* owner, str uname, str host);
 
-// TODO: fix signature.
-int clean(thread_mgr *mgr);
-
+// Periodical cleaning, called by timer thread.
+int thread_mgr_clean(thread_mgr *mgr);
 
 // TODO: all desired operations, bindings to m_dump.
 // send_message(str * receiver);

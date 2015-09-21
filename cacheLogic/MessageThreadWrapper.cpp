@@ -7,6 +7,9 @@
 #include "MessageThreadSender.hpp"
 #include "SipsSHMAllocator.hpp"
 #include "SipsHeapAllocator.hpp"
+#include "../../../str.h"
+#include "../../../dprint.h"
+#include "../../../mem/mem.h"
 
 thread_mgr* thread_mgr_init(){
     // use SHM allocator to create manager (sender queue, maps, ...).
@@ -76,7 +79,20 @@ int thread_mgr_destroy_sender(thread_mgr *holder){
     return 0;
 }
 
+int thread_mgr_dump(thread_mgr *mgr, struct sip_msg *msg, char *owner, str uname, str host) {
+    if (mgr == NULL || mgr->mgr == NULL){
+        return -1;
+    }
 
+    MessageThreadManager * manager = (MessageThreadManager*) holder->mgr;
+    return manager->dump(msg, owner, uname, host);
+}
 
+int thread_mgr_clean(thread_mgr *mgr) {
+    if (mgr == NULL || mgr->mgr == NULL){
+        return -1;
+    }
 
-
+    MessageThreadManager * manager = (MessageThreadManager*) holder->mgr;
+    return manager->clean();
+}
