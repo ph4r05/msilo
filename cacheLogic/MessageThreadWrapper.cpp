@@ -2,9 +2,9 @@
 // Created by Dusan Klinec on 20.09.15.
 //
 
-#include "MessageThreadWrapper.h"
-#include "MessageThreadManager.h"
-#include "MessageThreadSender.h"
+#include "MessageThreadWrapper.hpp"
+#include "MessageThreadManager.hpp"
+#include "MessageThreadSender.hpp"
 #include "SipsSHMAllocator.hpp"
 #include "SipsHeapAllocator.hpp"
 

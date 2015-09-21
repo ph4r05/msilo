@@ -8,12 +8,11 @@
 #include <iostream>
 #include <string>
 #include <functional>                  //std::equal_to
-#include <unordered_set>
-#include <limits>                      // std::numeric_limits
+#include <limits>                      //std::numeric_limits
 #include <boost/unordered_map.hpp>     //boost::unordered_map
 #include <boost/unordered_set.hpp>     //boost::unordered_set
 #include <boost/interprocess/sync/interprocess_mutex.hpp>
-#include "MessageListElement.h"
+#include "MessageListElement.hpp"
 #include "logic.h"
 
 // Message send record state.

@@ -2,4 +2,4 @@
 // Created by Dusan Klinec on 20.09.15.
 //
 
-#include "MessageThreadSender.h"
+#include "MessageThreadSender.hpp"

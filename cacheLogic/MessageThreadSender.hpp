@@ -14,8 +14,8 @@
 #include <memory>
 #include <thread>
 #include <string>
-#include "SenderJobQueue.h"
-#include "MessageThreadManager.h"
+#include "SenderJobQueue.hpp"
+#include "MessageThreadManager.hpp"
 
 /**
  * Main method of the sender thread.

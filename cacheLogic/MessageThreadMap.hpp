@@ -12,7 +12,7 @@
 #include <boost/unordered_map.hpp>
 #include <unordered_map>
 #include "logic.h"
-#include "MessageThreadElement.h"
+#include "MessageThreadElement.hpp"
 
 namespace bip = boost::interprocess;
 

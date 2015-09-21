@@ -5,6 +5,7 @@
 #ifndef OPENSIPS_1_11_2_TLS_MESSAGETHREADMANAGER_H
 #define OPENSIPS_1_11_2_TLS_MESSAGETHREADMANAGER_H
 
+#include <memory>
 #include <boost/interprocess/managed_shared_memory.hpp>
 #include <boost/interprocess/containers/string.hpp>
 #include <boost/interprocess/containers/map.hpp>
@@ -12,9 +13,9 @@
 #include <boost/unordered_map.hpp>
 #include <unordered_map>
 #include "logic.h"
-#include "MessageThreadElement.h"
-#include "MessageThreadMap.h"
-#include "SenderJobQueue.h"
+#include "MessageThreadElement.hpp"
+#include "MessageThreadMap.hpp"
+#include "SenderJobQueue.hpp"
 
 namespace bip = boost::interprocess;
 
