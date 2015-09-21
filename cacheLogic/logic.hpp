@@ -39,9 +39,7 @@ typedef SipsSHMAllocator<char> CharShmAllocator;
 typedef bip::basic_string <char, std::char_traits<char>, CharShmAllocator> ShmString;
 
 // Simple hasher for ShmString.
-std::size_t hash_value(ShmString const& b) {
-	return boost::hash_range(b.begin(), b.end());
-}
+std::size_t hash_value(ShmString const& b);
 
 #define PH_DBG( fmt, args...)                   		\
 				do {                            		\

@@ -6,7 +6,6 @@
 using namespace std;
 using namespace boost::interprocess;
 
-
 MessageThreadManager::MessageThreadManager(const MessageThreadManager &src) {
     this->alloc = src.getAlloc();
 }

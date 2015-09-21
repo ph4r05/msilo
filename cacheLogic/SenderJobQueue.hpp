@@ -113,36 +113,6 @@ public:
             allocator{alloc}
     {
         PH_DBG("Allocating job queue\n");
-        this->initJobPool();
-    }
-
-    /**
-     * Initializes job pool to a given size.
-     */
-    void initJobPool(){
-        const int poolSize = DEFAULT_POOL_SIZE;
-        SenderQueueJob jobTpl;
-
-        // Lock pool mutex, allocate X jobs in a row and init pool linked list.
-        bip::scoped_lock<bip::interprocess_mutex> lock(this->pool_mutex);
-        SenderQueueJob * jobs = this->allocator.allocate(poolSize, NULL);
-        for(int i = 0; i < poolSize; i++) {
-            SenderQueueJob * cJob = jobs + i;
-            this->allocator.construct(cJob, jobTpl);
-
-            if (i==0){
-                this->pool_head = cJob;
-            } else if ((i+1) == poolSize){
-                this->pool_tail = cJob;
-            }
-
-            if (i>0){
-                cJob->prev = jobs+i-1;
-                cJob->prev->next = cJob;
-            }
-        }
-
-        this->pool_size = poolSize;
     }
 
     /**

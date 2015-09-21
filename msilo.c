@@ -155,10 +155,10 @@ str msg_type = str_init("MESSAGE");
 /** Message thread manager */
 thread_mgr* thread_manager;
 
-static int initThreadManager();
-static int destroyThreadManager();
-static int initSenderThreads();
-static int terminateSenderThreads();
+static int initThreadManager(void);
+static int destroyThreadManager(void);
+static int initSenderThreads(void);
+static int terminateSenderThreads(void);
 
 /** module functions */
 static int mod_init(void);
@@ -1436,7 +1436,7 @@ int check_message_support(struct sip_msg* msg)
 /**
  * Called when server starts so shared variables for all processes are allocated and initialized.
  */
-static int initThreadManager(){
+static int initThreadManager(void){
 	thread_manager = thread_mgr_init();
 	if (thread_manager == NULL){
 		LM_ERR("Thread manager could not be initialized");
@@ -1449,7 +1449,7 @@ static int initThreadManager(){
 /**
  * Terminates running sender threads.
  */
-static int destroyThreadManager(){
+static int destroyThreadManager(void){
 	thread_mgr_destroy_sender(thread_manager);
 	return thread_mgr_destroy(thread_manager);
 }
@@ -1457,13 +1457,13 @@ static int destroyThreadManager(){
 /**
  * Called when worker process is initialized. Spawns sender threads.
  */
-static int initSenderThreads(){
+static int initSenderThreads(void){
 	return thread_mgr_init_sender(thread_manager);
 }
 
 /**
  * Sets all sender threads to terminate.
  */
-static int terminateSenderThreads(){
+static int terminateSenderThreads(void){
 	return thread_mgr_destroy_sender(thread_manager);
 }

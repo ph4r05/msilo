@@ -54,7 +54,7 @@ public:
     /**
      * Main worker method.
      */
-    void operator()() const{
+    void operator()() {
         this->work(this->arg);
     }
 

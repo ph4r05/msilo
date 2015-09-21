@@ -37,6 +37,13 @@ typedef struct {
     void *sender;
 } thread_mgr;
 
+// Structure to be passed as a parameter to the transaction module.
+typedef struct {
+    void *mgr;
+    void *sender;
+    long mid;
+} thread_tsx_callback;
+
 // Initializes new thread manager. Memory allocated by this call is deallocated by destroy call.
 // Should be called in global init before forking. Allocates memory on SHM.
 thread_mgr* thread_mgr_init();

@@ -12,6 +12,7 @@
 #include "../../../str.h"
 #include "../../../dprint.h"
 #include "../../../mem/mem.h"
+#include "../../tm/t_hooks.h"
 
 thread_mgr* thread_mgr_init(){
     // use SHM allocator to create manager (sender queue, maps, ...).
@@ -24,6 +25,8 @@ thread_mgr* thread_mgr_init(){
 
     holder->mgr = (void*) mgrAllocator.allocate(1, NULL);
     mgrAllocator.construct((MessageThreadManager *) holder->mgr, MessageThreadManager(mAllocator));
+    PH_INFO("Thread manager constructed\n");
+
     return holder;
 }
 
@@ -45,6 +48,7 @@ int thread_mgr_destroy(thread_mgr *holder){
 
     // Dealloc struct.
     structAllocator.deallocate(holder, 1);
+    PH_INFO("Thread manager destroyed\n");
     return 0;
 }
 
@@ -60,6 +64,8 @@ int thread_mgr_init_sender(thread_mgr *holder){
     SipsHeapAllocator<MessageThreadSender> hAlloc;
     holder->sender = (void*) hAlloc.allocate(1, NULL);
     hAlloc.construct((MessageThreadSender*) holder->sender, MessageThreadSender(mgr, mgr->getJobQueuePtr()));
+    PH_INFO("Thread sender constructed\n");
+
     return 0;
 }
 
@@ -78,6 +84,8 @@ int thread_mgr_destroy_sender(thread_mgr *holder){
     hAlloc.destroy((MessageThreadSender*)holder->sender);
     hAlloc.deallocate((MessageThreadSender*)holder->sender, 1);
     holder->sender = NULL;
+    PH_INFO("Thread sender destroyed\n");
+
     return 0;
 }
 
@@ -100,5 +108,6 @@ int thread_mgr_clean(thread_mgr *mgr) {
 }
 
 void thread_mgr_tm_callback(struct cell *t, int type, struct tmcb_params *ps){
+
     // TODO implement callback.
 }
