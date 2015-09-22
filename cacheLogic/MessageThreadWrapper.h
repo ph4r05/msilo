@@ -46,6 +46,9 @@ int thread_mgr_dump(thread_mgr *mgr, struct sip_msg* msg, char* owner, str uname
 // Periodical cleaning, called by timer thread.
 int thread_mgr_clean(thread_mgr *mgr);
 
+// Updates API hooks.
+int thread_mgr_update_api(thread_mgr *mgr, struct db_func * msilo_dbf, struct tm_binds * tmb);
+
 // TM callback
 void thread_mgr_tm_callback(struct cell *t, int type, struct tmcb_params *ps);
 

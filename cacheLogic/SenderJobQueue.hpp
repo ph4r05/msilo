@@ -45,15 +45,9 @@ public:
     std::function<void(void)> lambda;
 
     // body of the request.
-    union body {
-        // Send message struct
-        struct send {
-            ShmString * receiver;
-            ShmString * sender;
-            int fromRegistration;
-        } send;
-
-    } body;
+    ShmString receiver;
+    ShmString sender;
+    int fromRegistration;
 
     // Default constructor.
     SenderQueueJob() :

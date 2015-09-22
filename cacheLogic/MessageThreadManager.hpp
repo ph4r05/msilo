@@ -53,6 +53,10 @@ private:
     // Sender job queue, HSM allocated.
     SenderJobQueue jobQueue;
 
+    // Hooks
+    struct db_func * msilo_dbf;
+    struct tm_binds * tmb;
+
     // Methods.
     /**
      * Locks the main mutex, loads particular thread object
@@ -110,6 +114,22 @@ public:
 
     const MainAllocator &getAlloc() const {
         return alloc;
+    }
+
+    db_func *getMsilo_dbf() const {
+        return msilo_dbf;
+    }
+
+    void setMsilo_dbf(db_func *msilo_dbf) {
+        MessageThreadManager::msilo_dbf = msilo_dbf;
+    }
+
+    tm_binds *getTmb() const {
+        return tmb;
+    }
+
+    void setTmb(tm_binds *tmb) {
+        MessageThreadManager::tmb = tmb;
     }
 };
 

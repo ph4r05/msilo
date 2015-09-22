@@ -14,6 +14,7 @@
 #include "../../../mem/mem.h"
 #include "../../../mem/shm_mem.h"
 #include "../../tm/t_hooks.h"
+#include "common.h"
 
 thread_mgr* thread_mgr_init(){
     // use SHM allocator to create manager (sender queue, maps, ...).
@@ -106,6 +107,19 @@ int thread_mgr_clean(thread_mgr *mgr) {
 
     MessageThreadManager * manager = (MessageThreadManager*) mgr->mgr;
     return manager->clean((MessageThreadSender*)mgr->sender);
+}
+
+int thread_mgr_update_api(thread_mgr *mgr, struct db_func *msilo_dbf, struct tm_binds *tmb) {
+    if (mgr == NULL || mgr->mgr == NULL){
+        return -1;
+    }
+
+    mgr->msilo_dbf = msilo_dbf;
+    mgr->tmb = tmb;
+    MessageThreadManager * manager = (MessageThreadManager*) mgr->mgr;
+    manager->setMsilo_dbf(msilo_dbf);
+    manager->setTmb(tmb);
+    return 0;
 }
 
 void thread_mgr_tm_callback(struct cell *t, int type, struct tmcb_params *ps){

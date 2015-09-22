@@ -17,6 +17,15 @@ int MessageThreadManager::dump(MessageThreadSender * sender, struct sip_msg *msg
     }
 
     PH_INFO("uname starts with test- %.*s", uname.len, uname.s);
+    SenderQueueJob * job = new SenderQueueJob();
+    job->type = JOB_TYPE_SEND_RECEIVER;
+
+    std::string user = ph4::Utils::getUsername(uname, host);
+    ShmString receiver(user.c_str(), this->alloc);
+
+    job->receiver = receiver;
+    this->send1(job, sender);
+    delete job;
 
     //TODO: load all non-loaded messages from database, create threads.
     //TODO: offer all loaded messages to the threads objects.
@@ -52,7 +61,13 @@ int MessageThreadManager::tsx_callback(MessageThreadSender *sender, int code, Me
 void MessageThreadManager::send1(SenderQueueJob * job, MessageThreadSender * sender){
     // TODO: implement.
     // TODO: load data from database
-    ShmString * strReceiver = job->body.send.receiver;
+    ShmString & strReceiver = job->receiver;
+
+    // Executed in connection thread or worker thread.
+    //TODO: load all non-loaded messages from database, create threads.
+    //TODO: offer all loaded messages to the threads objects.
+    //TODO: start new sending if thread object is in NONE state or does not exist.
+
 
 
 }
@@ -61,14 +76,14 @@ void MessageThreadManager::send1(SenderQueueJob * job, MessageThreadSender * sen
  * Callback from sender, send(receiver, sender).
  */
 void MessageThreadManager::send2(SenderQueueJob * job, MessageThreadSender * sender){
-    ShmString * strReceiver = job->body.send.receiver;
-    ShmString * strSender = job->body.send.sender;
-    if (strReceiver == NULL || strSender == NULL){
+    ShmString & strReceiver = job->receiver;
+    ShmString & strSender = job->sender;
+    if (strReceiver.empty() || strSender.empty()){
         PH_ERR("send2: null receiver || sender");
         return;
     }
 
-    MessageThreadMapKey * mapKey = MessageThreadMapKeyFactory<decltype(this->alloc)>::build(*strReceiver, *strSender, this->alloc);
+    MessageThreadMapKey * mapKey = MessageThreadMapKeyFactory<decltype(this->alloc)>::build(strReceiver, strSender, this->alloc);
     MessageThreadMapElement elem = this->getThreadAndLock(*mapKey);
 
     // Lock a record mutex, going to operate.

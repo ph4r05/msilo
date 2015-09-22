@@ -41,6 +41,14 @@ typedef bip::basic_string <char, std::char_traits<char>, CharShmAllocator> ShmSt
 // Simple hasher for ShmString.
 std::size_t hash_value(ShmString const& b);
 
+// Utils
+namespace ph4{
+class Utils {
+public:
+	static std::string getUsername(str uname, str host);
+};
+};
+
 #define PH_DBG( fmt, args...)                   		\
 				do {                            		\
                     LM_DBG(fmt, ##args);        		\

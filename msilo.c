@@ -1444,8 +1444,7 @@ static int initThreadManager(void){
 	}
 
 	// Make Db & TM API available to the C++ code.
-	thread_manager->msilo_dbf = &msilo_dbf;
-	thread_manager->tmb = &tmb;
+	thread_mgr_update_api(thread_manager, &msilo_dbf, &tmb);
 	return 0;
 }
 
@@ -1461,6 +1460,10 @@ static int destroyThreadManager(void){
  * Called when worker process is initialized. Spawns sender threads.
  */
 static int initSenderThreads(void){
+	// Make Db & TM API available to the C++ code.
+	thread_mgr_update_api(thread_manager, &msilo_dbf, &tmb);
+
+	// Sender thread init itself.
 	return thread_mgr_init_sender(thread_manager);
 }
 
