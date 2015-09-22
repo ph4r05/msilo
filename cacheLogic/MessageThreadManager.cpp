@@ -5,6 +5,18 @@
 #include "MessageThreadManager.hpp"
 #include "common.h"
 
+// Hackery aparatus to include c++ incompatible c headers.
+#define class xclass
+#define delete xdelete
+#pragma GCC diagnostic push
+#pragma GCC diagnostic warning "-fpermissive"
+#pragma GCC diagnostic warning "-pedantic"
+#pragma GCC diagnostic warning "-w"
+#include "../../../db/db.h"
+#pragma GCC diagnostic pop
+#undef class
+#undef delete
+
 using namespace std;
 using namespace boost::interprocess;
 
@@ -76,7 +88,64 @@ void MessageThreadManager::send1(SenderQueueJob * job, MessageThreadSender * sen
         PH_WARN("DB loading error, result: %d", loadRes);
     } else {
         // TODO: implement message loading.
+        LM_INFO("x: dumping [%d] messages for <%s>\n", RES_ROW_N(db_res), strReceiver.c_str());
 
+//        for(i = 0; i < RES_ROW_N(db_res); i++)
+//        {
+//            mid =  RES_ROWS(db_res)[i].values[0].val.int_val;
+//            if(msg_list_check_msg(ml, mid))
+//            {
+//                LM_INFO("message[%d] mid=%d already sent.\n", i, mid);
+//                continue;
+//            }
+//
+//            memset(str_vals, 0, 4*sizeof(str));
+//            SET_STR_VAL(str_vals[0], db_res, i, 1); /* from */
+//            SET_STR_VAL(str_vals[1], db_res, i, 2); /* to */
+//            SET_STR_VAL(str_vals[2], db_res, i, 3); /* body */
+//            SET_STR_VAL(str_vals[3], db_res, i, 4); /* ctype */
+//            rtime =
+//                    (time_t)RES_ROWS(db_res)[i].values[5/*inc time*/].val.int_val;
+//
+//            hdr_str.len = 1024;
+//            if(m_build_headers(&hdr_str, str_vals[3] /*ctype*/,
+//                               str_vals[0]/*from*/, rtime /*Date*/, (long) (dumpId * 1000l)) < 0)
+//            {
+//                LM_ERR("headers building failed [%d]\n", mid);
+//                if (msilo_dbf.free_result(db_con, db_res) < 0)
+//                    LM_ERR("failed to free the query result\n");
+//                msg_list_set_flag(ml, mid, MS_MSG_ERRO);
+//                goto error;
+//            }
+//
+//            LM_DBG("msg [%d-%d] for: %.*s\n", i+1, mid,	pto->uri.len, pto->uri.s);
+//
+//            /** sending using TM function: t_uac */
+//            body_str.len = 1024;
+//            n = m_build_body(&body_str, rtime, str_vals[2/*body*/], 0);
+//            if(n<0)
+//                LM_DBG("sending simple body\n");
+//            else
+//                LM_DBG("sending composed body\n");
+//
+//            int res = tmb.t_request(&msg_type,  /* Type of the message */
+//                                    &str_vals[1],     /* Request-URI (To) */
+//                                    &str_vals[1],     /* To */
+//                                    &str_vals[0],     /* From */
+//                                    &hdr_str,         /* Optional headers including CRLF */
+//                                    (n<0)?&str_vals[2]:&body_str, /* Message body */
+//                                    (ms_outbound_proxy.s)?&ms_outbound_proxy:0,
+//                    /* outbound uri */
+//                                    m_tm_callback,    /* Callback function */
+//                                    (void*)(long)mid, /* Callback parameter */
+//                                    NULL
+//            );
+//
+//            if (res < 0){
+//                LM_WARN("message sending failed [%d], res=%d messages for <%.*s>!\n",
+//                        mid, res, pto->uri.len, pto->uri.s);
+//            }
+//        }
     }
 
     //TODO: offer all loaded messages to the threads objects.
