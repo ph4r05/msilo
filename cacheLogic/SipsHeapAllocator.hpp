@@ -10,6 +10,7 @@
 #include <iostream>
 #include "../../../mem/mem.h"
 #include "../../../mem/shm_mem.h"
+#include "SipsAllocator.hpp"
 
 /**
  * Allocator uses OpenSIPS facilities to allocate chunks on heap.

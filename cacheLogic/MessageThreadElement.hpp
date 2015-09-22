@@ -99,8 +99,8 @@ private:
 
     // Constructor with allocator.
 public:
-    template <typename Alloc2>
-    MessageThreadElement(Alloc2 const& alloc = {})
+    template<class Alloc>
+    MessageThreadElement(Alloc const& alloc = {})
             : msg_cache_head{NULL},
               msg_cache_tail{NULL},
               msg_cache_min_mid{std::numeric_limits<MessageIDType>::max()},
@@ -112,7 +112,6 @@ public:
     {
 
     }
-
 
     ShmString getReceiver() const {
         return receiver;
@@ -199,4 +198,31 @@ public:
     }
 };
 
+template<class Alloc>
+class MessageThreadElementWrapper {
+public:
+    typedef typename Alloc::template rebind<MessageThreadElement>::other Node_alloc;
+    typedef typename Node_alloc::pointer Nodeptr;
+    typedef typename Alloc::template rebind<MessageThreadElementWrapper>::other Wrapper_alloc;
+    typedef typename Wrapper_alloc::pointer Wrapperptr;
+
+    // Encapsulated element.
+    MessageThreadElement elem;
+
+    // Access operator goes directly to the element.
+    MessageThreadElement * operator->() const {
+        return &elem;
+    }
+
+    MessageThreadElementWrapper() { }
+    MessageThreadElementWrapper(const MessageThreadElement &elem) : elem(elem) { }
+
+    static MessageThreadElement * build(Alloc const& alloc);
+    static MessageThreadElement * build(const ShmString &aReceiver, const ShmString &aSender, const Alloc &alloc);
+    static void destroy(MessageThreadElement * elem, Alloc const& alloc);
+
+    static MessageThreadElementWrapper<Alloc> * buildWrapper(Alloc const& alloc);
+    static MessageThreadElementWrapper<Alloc> * buildWrapper(const ShmString &aReceiver, const ShmString &aSender, const Alloc &alloc);
+    static void destroyWrapper(MessageThreadElementWrapper<Alloc> * elem, Alloc const& alloc);
+};
 #endif //OPENSIPS_1_11_2_TLS_MESSAGETHREADELEMENT_H

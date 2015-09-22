@@ -68,8 +68,8 @@ void MessageThreadManager::send2(SenderQueueJob * job, MessageThreadSender * sen
         return;
     }
 
-    const MessageThreadMapKey mapKey(*strReceiver, *strSender);
-    MessageThreadMapElement elem = this->getThreadAndLock(mapKey);
+    MessageThreadMapKey * mapKey = MessageThreadMapKeyFactory<decltype(this->alloc)>::build(*strReceiver, *strSender, this->alloc);
+    MessageThreadMapElement elem = this->getThreadAndLock(*mapKey);
 
     // Lock a record mutex, going to operate.
     bip::scoped_lock<bip::interprocess_mutex> lock(elem->getMutex());
@@ -90,10 +90,8 @@ MessageThreadElement * MessageThreadManager::getThreadAndLock(const MessageThrea
 
     MessageThreadMap::const_iterator iter = threadMap.find(key);
     if(iter == threadMap.end()){
-        // TODO: create a new one
-        MessageThreadMapElement elem = new MessageThreadElement(this->alloc);
-        elem->setReceiver(key.receiver);
-        elem->setSender(key.sender);
+        // Allocating a new one, on SHM.
+        MessageThreadMapElement elem = MessageThreadElementWrapper<decltype(this->alloc)>::build(key.receiver, key.sender, this->alloc);
 
         threadMap[key] = elem;
         return elem;

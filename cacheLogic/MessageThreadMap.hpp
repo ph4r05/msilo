@@ -18,7 +18,8 @@ namespace bip = boost::interprocess;
 
 // Message thread key
 // (receiver, sender) string tuple.
-typedef struct MessageThreadMapKey {
+class MessageThreadMapKey {
+public:
     ShmString receiver;
     ShmString sender;
 
@@ -32,7 +33,32 @@ typedef struct MessageThreadMapKey {
     MessageThreadMapKey(const ShmString &receiver, const ShmString &sender) : receiver(receiver), sender(sender) { }
     MessageThreadMapKey(const MessageThreadMapKey & src) : receiver(src.receiver), sender(src.sender) { }
     MessageThreadMapKey(MessageThreadMapKey && src) noexcept : receiver(std::move(src.receiver)), sender(std::move(src.sender)){ }
-} MessageThreadMapKey;
+};
+
+// Factory, allocator bound.
+template<class Alloc>
+class MessageThreadMapKeyFactory {
+public:
+    typedef typename Alloc::template rebind<MessageThreadMapKey>::other Node_alloc;
+    typedef typename Node_alloc::pointer Nodeptr;
+    typedef typename Alloc::template rebind<MessageThreadMapKeyFactory>::other Wrapper_alloc;
+    typedef typename Wrapper_alloc::pointer Wrapperptr;
+
+    // Encapsulated element.
+    MessageThreadMapKey elem;
+
+    // Access operator goes directly to the element.
+    MessageThreadMapKey * operator->() const {
+        return &elem;
+    }
+
+    MessageThreadMapKeyFactory() { }
+    MessageThreadMapKeyFactory(const MessageThreadMapKey &elem) : elem(elem) { }
+
+    static MessageThreadMapKey * build(Alloc const& alloc);
+    static MessageThreadMapKey * build(const ShmString &aReceiver, const ShmString &aSender, const Alloc &alloc);
+    static void destroy(MessageThreadMapKey * elem, Alloc const& alloc);
+};
 
 // Hash function for message thread key. hashcode().
 struct MessageThreadMapKeyHasher {
