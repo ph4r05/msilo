@@ -66,6 +66,9 @@ public:
 
         // Use shared memory interface provided by OpenSIPS.
         pointer ret = (pointer)shm_malloc(num*sizeof(T));
+        if (ret == NULL){
+            throw std::bad_alloc();
+        }
 
         // Old version: heap allocation.
         //pointer ret = (pointer)(::operator new(num*sizeof(T)));

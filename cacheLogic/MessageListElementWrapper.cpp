@@ -10,8 +10,11 @@ MessageListElement *MessageListElementWrapper<Alloc>::build(const Alloc &alloc) 
 
     // Allocate
     MessageListElement * elem = cAlloc.allocate(1, NULL);
-    cAlloc.construct (elem, (MessageListElement()));
+    if (elem == nullptr){
+        throw std::bad_alloc();
+    }
 
+    cAlloc.construct (elem, (MessageListElement()));
     return elem;
 }
 
@@ -32,8 +35,11 @@ MessageListElementWrapper<Alloc> *MessageListElementWrapper<Alloc>::buildWrapper
 
     // Allocate
     MessageListElementWrapper<Alloc> * elem = cAlloc.allocate(1, NULL);
-    cAlloc.construct (elem, (MessageListElementWrapper()));
+    if (elem == nullptr){
+        throw std::bad_alloc();
+    }
 
+    cAlloc.construct (elem, (MessageListElementWrapper()));
     return elem;
 }
 

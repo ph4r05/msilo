@@ -97,6 +97,10 @@ void MessageThreadManager::send2(SenderQueueJob * job, MessageThreadSender * sen
 
     MessageThreadMapKey * mapKey = MessageThreadMapKeyFactory<decltype(this->alloc)>::build(strReceiver, strSender, this->alloc);
     MessageThreadMapElement elem = this->getThreadAndLock(*mapKey);
+    if (elem == nullptr){
+        PH_WARN("Could not allocate cache entry");
+        return;
+    }
 
     // Lock a record mutex, going to operate.
     bip::scoped_lock<bip::interprocess_mutex> lock(elem->getMutex());
@@ -118,9 +122,16 @@ MessageThreadElement * MessageThreadManager::getThreadAndLock(const MessageThrea
     MessageThreadMap::const_iterator iter = threadMap.find(key);
     if(iter == threadMap.end()){
         // Allocating a new one, on SHM.
-        MessageThreadMapElement elem = MessageThreadElementWrapper<decltype(this->alloc)>::build(key.receiver, key.sender, this->alloc);
+        // TODO: add LRU/POOLing.
+        MessageThreadMapElement elem = NULL;
+        try {
+            elem = MessageThreadElementWrapper<decltype(this->alloc)>::build(key.receiver, key.sender, this->alloc);
+            threadMap[key] = elem;
 
-        threadMap[key] = elem;
+        } catch(std::bad_alloc){
+            PH_WARN("Bad allocation in message thread element alloc");
+        }
+
         return elem;
 
     } else {

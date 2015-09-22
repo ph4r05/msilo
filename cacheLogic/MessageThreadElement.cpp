@@ -10,8 +10,11 @@ MessageThreadElement *MessageThreadElementWrapper<Alloc>::build(const Alloc &all
 
     // Allocate
     MessageThreadElement * elem = cAlloc.allocate(1, NULL);
-    cAlloc.construct (elem, (MessageThreadElement()));
+    if (elem == nullptr){
+        throw std::bad_alloc();
+    }
 
+    cAlloc.construct (elem, (MessageThreadElement()));
     return elem;
 }
 
@@ -21,6 +24,10 @@ MessageThreadElement *MessageThreadElementWrapper<Alloc>::build(const ShmString 
 
     // Allocate
     MessageThreadElement * elem = cAlloc.allocate(1, NULL);
+    if (elem == nullptr){
+        throw std::bad_alloc();
+    }
+
     cAlloc.construct (elem, (MessageThreadElement()));
     elem->setSender(aSender);
     elem->setReceiver(aReceiver);
@@ -45,8 +52,11 @@ MessageThreadElementWrapper<Alloc> *MessageThreadElementWrapper<Alloc>::buildWra
 
     // Allocate
     MessageThreadElementWrapper<Alloc> * elem = cAlloc.allocate(1, NULL);
-    cAlloc.construct (elem, (MessageThreadElementWrapper()));
+    if (elem == nullptr){
+        throw std::bad_alloc();
+    }
 
+    cAlloc.construct (elem, (MessageThreadElementWrapper()));
     return elem;
 }
 
@@ -56,10 +66,13 @@ MessageThreadElementWrapper<Alloc> *MessageThreadElementWrapper<Alloc>::buildWra
 
     // Allocate
     MessageThreadElementWrapper<Alloc> * elem = cAlloc.allocate(1, NULL);
+    if (elem == nullptr){
+        throw std::bad_alloc();
+    }
+
     cAlloc.construct (elem, (MessageThreadElementWrapper()));
     elem->elem.setReceiver(aReceiver);
     elem->elem.setSender(aSender);
-
     return elem;
 }
 
