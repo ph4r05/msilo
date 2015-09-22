@@ -70,6 +70,7 @@
 #include "ms_msg_list.h"
 #include "msfuncs.h"
 #include "cacheLogic/MessageThreadWrapper.h"
+#include "common.h"
 
 #define MAX_DEL_KEYS	1
 #define NR_KEYS			10
@@ -84,33 +85,6 @@ static str sc_ctype    = str_init("ctype");     /* 6 */
 static str sc_exp_time = str_init("exp_time");  /* 7 */
 static str sc_inc_time = str_init("inc_time");  /* 8 */
 static str sc_snd_time = str_init("snd_time");  /* 9 */
-
-#define SET_STR_VAL(_str, _res, _r, _c)	\
-	if (RES_ROWS(_res)[_r].values[_c].nul == 0) \
-	{ \
-		switch(RES_ROWS(_res)[_r].values[_c].type) \
-		{ \
-		case DB_STRING: \
-			(_str).s=(char*)RES_ROWS(_res)[_r].values[_c].val.string_val; \
-			(_str).len=strlen((_str).s); \
-			break; \
-		case DB_STR: \
-			(_str).len=RES_ROWS(_res)[_r].values[_c].val.str_val.len; \
-			(_str).s=(char*)RES_ROWS(_res)[_r].values[_c].val.str_val.s; \
-			break; \
-		case DB_BLOB: \
-			(_str).len=RES_ROWS(_res)[_r].values[_c].val.blob_val.len; \
-			(_str).s=(char*)RES_ROWS(_res)[_r].values[_c].val.blob_val.s; \
-			break; \
-		default: \
-			(_str).len=0; \
-			(_str).s=NULL; \
-		} \
-	}
-
-
-
-#define S_TABLE_VERSION 6
 
 /** database connection */
 static db_con_t *db_con = NULL;
@@ -154,6 +128,7 @@ str msg_type = str_init("MESSAGE");
 
 /** Message thread manager */
 thread_mgr* thread_manager;
+thread_mgr_api thread_manager_api;
 
 static int initThreadManager(void);
 static int destroyThreadManager(void);
@@ -224,6 +199,7 @@ static param_export_t params[]={
 
 #ifdef STATISTICS
 #include "../../statistics.h"
+#include "cacheLogic/common.h"
 
 stat_var* ms_stored_msgs;
 stat_var* ms_dumped_msgs;
@@ -1433,6 +1409,58 @@ int check_message_support(struct sip_msg* msg)
 	return -1;
 }
 
+int load_messages(str * uname, str * host, db_res_t** db_res){
+	db_key_t db_keys[3];
+	db_key_t ob_key;
+	db_op_t  db_ops[3];
+	db_val_t db_vals[3];
+	db_key_t db_cols[6];
+
+	int db_no_cols = 6;
+	int db_no_keys = 3;
+
+	/* init */
+	ob_key = &sc_mid;
+	db_keys[0]=&sc_uri_user;
+	db_keys[1]=&sc_uri_host;
+	db_keys[2]=&sc_snd_time;
+	db_ops[0]=OP_EQ;
+	db_ops[1]=OP_EQ;
+	db_ops[2]=OP_EQ;
+
+	db_cols[0]=&sc_mid;
+	db_cols[1]=&sc_from;
+	db_cols[2]=&sc_to;
+	db_cols[3]=&sc_body;
+	db_cols[4]=&sc_ctype;
+	db_cols[5]=&sc_inc_time;
+
+	db_vals[0].type = DB_STR;
+	db_vals[0].nul = 0;
+	db_vals[0].val.str_val.s = uname->s;
+	db_vals[0].val.str_val.len = uname->len;
+
+	db_vals[1].type = DB_STR;
+	db_vals[1].nul = 0;
+	db_vals[1].val.str_val.s = host->s;
+	db_vals[1].val.str_val.len = host->len;
+
+	db_vals[2].type = DB_INT;
+	db_vals[2].nul = 0;
+	db_vals[2].val.int_val = 0;
+
+	if (msilo_dbf.use_table(db_con, &ms_db_table) < 0)
+	{
+		LM_ERR("failed to use_table\n");
+		goto error;
+	}
+
+	return (msilo_dbf.query(db_con,db_keys,db_ops,db_vals,db_cols,db_no_keys, db_no_cols, ob_key, db_res)==0);
+
+	error:
+	return -1;
+}
+
 /**
  * Called when server starts so shared variables for all processes are allocated and initialized.
  */
@@ -1444,7 +1472,11 @@ static int initThreadManager(void){
 	}
 
 	// Make Db & TM API available to the C++ code.
-	thread_mgr_update_api(thread_manager, &msilo_dbf, &tmb);
+	thread_manager_api.tmb = &tmb;
+	thread_manager_api.msilo_dbf = &msilo_dbf;
+	thread_manager_api.db_con = db_con;
+	thread_manager_api.load_messages = load_messages;
+	thread_mgr_update_api(thread_manager, &thread_manager_api);
 	return 0;
 }
 
@@ -1461,7 +1493,11 @@ static int destroyThreadManager(void){
  */
 static int initSenderThreads(void){
 	// Make Db & TM API available to the C++ code.
-	thread_mgr_update_api(thread_manager, &msilo_dbf, &tmb);
+	thread_manager_api.tmb = &tmb;
+	thread_manager_api.msilo_dbf = &msilo_dbf;
+	thread_manager_api.db_con = db_con;
+	thread_manager_api.load_messages = load_messages;
+	thread_mgr_update_api(thread_manager, &thread_manager_api);
 
 	// Sender thread init itself.
 	return thread_mgr_init_sender(thread_manager);

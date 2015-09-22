@@ -3,6 +3,8 @@
 //
 
 #include "MessageThreadManager.hpp"
+#include "common.h"
+
 using namespace std;
 using namespace boost::interprocess;
 
@@ -65,10 +67,20 @@ void MessageThreadManager::send1(SenderQueueJob * job, MessageThreadSender * sen
 
     // Executed in connection thread or worker thread.
     //TODO: load all non-loaded messages from database, create threads.
+    // TODO: split on "@"
+    str uname;
+    str host;
+    db_res_t* db_res = NULL;
+    int loadRes = api.load_messages(&uname, &host, &db_res);
+    if (loadRes < 0){
+        PH_WARN("DB loading error, result: %d", loadRes);
+    } else {
+        // TODO: implement message loading.
+
+    }
+
     //TODO: offer all loaded messages to the threads objects.
     //TODO: start new sending if thread object is in NONE state or does not exist.
-
-
 
 }
 

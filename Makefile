@@ -23,7 +23,9 @@ COMPILE.c = $(CC) $(CFLAGS) $(CPPFLAGS) $(DEFS) -c
 LINK.o = $(CC) $(LDFLAGS) $(DEFS)
 
 SRC_FILES = cacheLogic/logic.cpp \
+            cacheLogic/ApiHelper.cpp \
             cacheLogic/MessageListElement.cpp \
+            cacheLogic/MessageListElementWrapper.cpp \
             cacheLogic/MessageThreadElement.cpp \
             cacheLogic/MessageThreadManager.cpp \
             cacheLogic/MessageThreadMap.cpp \

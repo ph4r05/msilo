@@ -109,16 +109,15 @@ int thread_mgr_clean(thread_mgr *mgr) {
     return manager->clean((MessageThreadSender*)mgr->sender);
 }
 
-int thread_mgr_update_api(thread_mgr *mgr, struct db_func *msilo_dbf, struct tm_binds *tmb) {
-    if (mgr == NULL || mgr->mgr == NULL){
+int thread_mgr_update_api(thread_mgr *mgr, thread_mgr_api * api) {
+    if (mgr == NULL || mgr->mgr == NULL || api == NULL){
         return -1;
     }
 
-    mgr->msilo_dbf = msilo_dbf;
-    mgr->tmb = tmb;
+    mgr->msilo_dbf = api->msilo_dbf;
+    mgr->tmb = api->tmb;
     MessageThreadManager * manager = (MessageThreadManager*) mgr->mgr;
-    manager->setMsilo_dbf(msilo_dbf);
-    manager->setTmb(tmb);
+    manager->updateApi(api);
     return 0;
 }
 

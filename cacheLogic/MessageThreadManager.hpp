@@ -20,6 +20,7 @@
 #include "SenderJobQueue.hpp"
 #include "SipsHeapAllocator.hpp"
 #include "SipsSHMAllocator.hpp"
+#include "common.h"
 
 // Main allocator, will be used after rebind call to allocate list elements.
 typedef SipsSHMAllocator<MessageListElement> MainAllocator;
@@ -54,8 +55,7 @@ private:
     SenderJobQueue jobQueue;
 
     // Hooks
-    struct db_func * msilo_dbf;
-    struct tm_binds * tmb;
+    thread_mgr_api api;
 
     // Methods.
     /**
@@ -116,20 +116,11 @@ public:
         return alloc;
     }
 
-    db_func *getMsilo_dbf() const {
-        return msilo_dbf;
-    }
-
-    void setMsilo_dbf(db_func *msilo_dbf) {
-        MessageThreadManager::msilo_dbf = msilo_dbf;
-    }
-
-    tm_binds *getTmb() const {
-        return tmb;
-    }
-
-    void setTmb(tm_binds *tmb) {
-        MessageThreadManager::tmb = tmb;
+    void updateApi(thread_mgr_api const * api){
+        this->api.db_con = api->db_con;
+        this->api.msilo_dbf = api->msilo_dbf;
+        this->api.tmb = api->tmb;
+        this->api.load_messages = api->load_messages;
     }
 };
 

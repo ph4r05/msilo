@@ -47,7 +47,7 @@ int thread_mgr_dump(thread_mgr *mgr, struct sip_msg* msg, char* owner, str uname
 int thread_mgr_clean(thread_mgr *mgr);
 
 // Updates API hooks.
-int thread_mgr_update_api(thread_mgr *mgr, struct db_func * msilo_dbf, struct tm_binds * tmb);
+int thread_mgr_update_api(thread_mgr *mgr, thread_mgr_api * api);
 
 // TM callback
 void thread_mgr_tm_callback(struct cell *t, int type, struct tmcb_params *ps);
