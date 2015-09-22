@@ -70,7 +70,7 @@ void MessageThreadManager::send1(SenderQueueJob * job, MessageThreadSender * sen
     // TODO: split on "@"
     str uname;
     str host;
-    db_res_t* db_res = NULL;
+    struct db_res * db_res = NULL;
     int loadRes = api.load_messages(&uname, &host, &db_res);
     if (loadRes < 0){
         PH_WARN("DB loading error, result: %d", loadRes);
