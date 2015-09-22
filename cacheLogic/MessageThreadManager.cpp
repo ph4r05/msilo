@@ -3,19 +3,20 @@
 //
 
 #include "MessageThreadManager.hpp"
+#include "MessageThreadWrapper.h"
 #include "common.h"
+#include "../common.h"
 
-// Hackery aparatus to include c++ incompatible c headers.
-#define class xclass
-#define delete xdelete
+#include "apiDeps.h"
+#include "../msfuncs.h"
+#include "../ms_msg_list.h"
+
+// Static definitions.
 #pragma GCC diagnostic push
-#pragma GCC diagnostic warning "-fpermissive"
-#pragma GCC diagnostic warning "-pedantic"
-#pragma GCC diagnostic warning "-w"
-#include "../../../db/db.h"
+#pragma GCC diagnostic warning "-Wno-write-strings"
+#define MESSAGE_STR "MESSAGE"
+static str msg_type = {MESSAGE_STR, sizeof(MESSAGE_STR)};
 #pragma GCC diagnostic pop
-#undef class
-#undef delete
 
 using namespace std;
 using namespace boost::interprocess;

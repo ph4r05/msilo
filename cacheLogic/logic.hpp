@@ -19,6 +19,7 @@
 #include <thread>
 #include <string>
 #include <cstring>
+#include <vector>
 
 #include "SipsSHMAllocator.hpp"
 #include "SipsHeapAllocator.hpp"
@@ -46,6 +47,12 @@ namespace ph4{
 class Utils {
 public:
 	static std::string getUsername(str uname, str host);
+	static std::vector<std::string> split(const std::string& str, const std::string& delimiter = "@");
+
+	/**
+	 * Splits test@domain.tld to u=test, h=domain.tld.
+	 */
+	static int splitUserName(const std::string& uname, char * u, size_t uSize, char * h, size_t hSize);
 };
 };
 

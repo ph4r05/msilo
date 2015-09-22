@@ -48,7 +48,6 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <time.h>
-#include <pthread.h>
 
 #include "../../sr_module.h"
 #include "../../dprint.h"

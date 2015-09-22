@@ -13,7 +13,7 @@ CXX=/opt/rh/devtoolset-2/root/usr/bin/g++
 LD=/opt/rh/devtoolset-2/root/usr/bin/g++
 
 LIBS+= -lpthread -L/usr/local/lib
-CXXFLAGS+= -std=c++11 -Wno-write-strings -fPIC $(DEFS)
+CXXFLAGS+= -std=c++11 -Wno-write-strings -fPIC $(DEFS) -fdiagnostics-show-option
 
 include ../../Makefile.modules
 
