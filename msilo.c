@@ -73,6 +73,7 @@
 
 #define MAX_DEL_KEYS	1
 #define NR_KEYS			10
+#define MSG_BUFFER_SIZE			2048
 
 static str sc_mid      = str_init("id");        /* 0 */
 static str sc_from     = str_init("src_addr");  /* 1 */
@@ -453,7 +454,7 @@ static int m_store(struct sip_msg* msg, char* owner, char* s2)
 
 	int nr_keys = 0, val, lexpire;
 	content_type_t ctype;
-#define MS_BUF1_SIZE	1024
+#define MS_BUF1_SIZE	MSG_BUFFER_SIZE
 	static char ms_buf1[MS_BUF1_SIZE];
 	int mime;
 	str notify_from;
@@ -797,8 +798,8 @@ static int m_dump(struct sip_msg* msg, char* owner, char* str2)
 	db_key_t db_cols[6];
 	db_res_t* db_res = NULL;
 	int i, db_no_cols = 6, db_no_keys = 3, mid, n;
-	static char hdr_buf[1024];
-	static char body_buf[1024];
+	static char hdr_buf[MSG_BUFFER_SIZE];
+	static char body_buf[MSG_BUFFER_SIZE];
 	struct sip_uri puri;
 	str owner_s;
 
@@ -826,9 +827,9 @@ static int m_dump(struct sip_msg* msg, char* owner, char* str2)
 
 	LM_DBG("------------ start ------------\n");
 	hdr_str.s=hdr_buf;
-	hdr_str.len=1024;
+	hdr_str.len=MSG_BUFFER_SIZE;
 	body_str.s=body_buf;
-	body_str.len=1024;
+	body_str.len=MSG_BUFFER_SIZE;
 
 	/* check for TO header */
 	if(msg->to==NULL && (parse_headers(msg, HDR_TO_F, 0)==-1
@@ -959,7 +960,7 @@ static int m_dump(struct sip_msg* msg, char* owner, char* str2)
 		rtime =
 			(time_t)RES_ROWS(db_res)[i].values[5/*inc time*/].val.int_val;
 
-		hdr_str.len = 1024;
+		hdr_str.len = MSG_BUFFER_SIZE;
 		if(m_build_headers(&hdr_str, str_vals[3] /*ctype*/,
 				str_vals[0]/*from*/, rtime /*Date*/, (long) (dumpId * 1000l)) < 0)
 		{
@@ -973,7 +974,7 @@ static int m_dump(struct sip_msg* msg, char* owner, char* str2)
 		LM_DBG("msg [%d-%d] for: %.*s\n", i+1, mid,	pto->uri.len, pto->uri.s);
 
 		/** sending using TM function: t_uac */
-		body_str.len = 1024;
+		body_str.len = MSG_BUFFER_SIZE;
 		n = m_build_body(&body_str, rtime, str_vals[2/*body*/], 0);
 		if(n<0)
 			LM_DBG("sending simple body\n");
@@ -1153,9 +1154,9 @@ void m_send_ontimer(unsigned int ticks, void *param)
 	db_key_t db_cols[6];
 	db_res_t* db_res = NULL;
 	int i, db_no_cols = 6, db_no_keys = 2, mid, n;
-	static char hdr_buf[1024];
-	static char uri_buf[1024];
-	static char body_buf[1024];
+	static char hdr_buf[MSG_BUFFER_SIZE];
+	static char uri_buf[MSG_BUFFER_SIZE];
+	static char body_buf[MSG_BUFFER_SIZE];
 	str puri;
 	time_t ttime;
 
@@ -1185,9 +1186,9 @@ void m_send_ontimer(unsigned int ticks, void *param)
 
 	LM_DBG("------------ start ------------\n");
 	hdr_str.s=hdr_buf;
-	hdr_str.len=1024;
+	hdr_str.len=MSG_BUFFER_SIZE;
 	body_str.s=body_buf;
-	body_str.len=1024;
+	body_str.len=MSG_BUFFER_SIZE;
 
 	db_vals[0].type = DB_INT;
 	db_vals[0].nul = 0;
@@ -1230,7 +1231,7 @@ void m_send_ontimer(unsigned int ticks, void *param)
 		SET_STR_VAL(str_vals[2], db_res, i, 3); /* body */
 		SET_STR_VAL(str_vals[3], db_res, i, 4); /* ctype */
 
-		hdr_str.len = 1024;
+		hdr_str.len = MSG_BUFFER_SIZE;
 		if(m_build_headers(&hdr_str, str_vals[3] /*ctype*/,
 				ms_reminder/*from*/,0/*Date*/, (long) (dumpId * 1000l)) < 0)
 		{
@@ -1251,7 +1252,7 @@ void m_send_ontimer(unsigned int ticks, void *param)
 		LM_DBG("msg [%d-%d] for: %.*s\n", i+1, mid,	puri.len, puri.s);
 
 		/** sending using TM function: t_uac */
-		body_str.len = 1024;
+		body_str.len = MSG_BUFFER_SIZE;
 		stime =
 			(time_t)RES_ROWS(db_res)[i].values[5/*snd time*/].val.int_val;
 		n = m_build_body(&body_str, 0, str_vals[2/*body*/], stime);
