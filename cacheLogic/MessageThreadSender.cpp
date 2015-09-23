@@ -12,8 +12,8 @@ void SenderThreadWorker::work(SenderThreadArg *arg) const{
     // Work loop.
     while(1){
         // Get strong pointer to the sender manager, determine if running the thread is allowed.
-        auto senderPt = wSender.lock();
-        auto mgrPt = wThreadMgr.lock();
+        auto senderPt = wSender;
+        auto mgrPt = wThreadMgr;
         if (!senderPt || !mgrPt){
             // Deallocated menawhile.
             break;
@@ -75,11 +75,11 @@ void SenderThreadWorker::work(SenderThreadArg *arg) const{
                     break;
 
                 case JOB_TYPE_SEND_RECEIVER:
-                    this->send1(job, senderPt.get(), mgrPt.get());
+                    this->send1(job, senderPt, mgrPt);
                     break;
 
                 case JOB_TYPE_SEND_RECEIVER_SENDER:
-                    this->send2(job, senderPt.get(), mgrPt.get());
+                    this->send2(job, senderPt, mgrPt);
                     break;
 
                 case JOB_TYPE_CLEAN:
@@ -115,7 +115,7 @@ int MessageThreadSender::spawnSenderThreads() {
 
     for(t = 0; t < SENDER_THREAD_NUM && rc == 0; t++){
         try {
-            this->workers[t].setWSender(sSelf);
+            this->workers[t].setWSender(this);
             this->workers[t].setWThreadMgr(mgr);
             this->senderThreadsArgs[t].rank = t;
             if (this->senderThreads[t] != NULL){

@@ -42,8 +42,8 @@ public:
     typedef void type;
 
     // For synchronization, sender pointer for callbacks from worker queue.
-    std::weak_ptr<MessageThreadSender> wSender;
-    std::weak_ptr<MessageThreadManager> wThreadMgr;
+    MessageThreadSender * wSender;
+    MessageThreadManager * wThreadMgr;
 
     // Parameter.
     SenderThreadArg * arg;
@@ -64,19 +64,11 @@ public:
 
     void send2(SenderQueueJob * job, MessageThreadSender * sender, MessageThreadManager * manager) const;
 
-    const std::weak_ptr<MessageThreadSender> &getWSender() const {
-        return wSender;
-    }
-
-    void setWSender(const std::shared_ptr<MessageThreadSender> &sender) {
+    void setWSender(MessageThreadSender * sender) {
         this->wSender = sender;
     }
 
-    const std::weak_ptr<MessageThreadManager> &getWThreadMgr() {
-        return wThreadMgr;
-    }
-
-    void setWThreadMgr(const std::shared_ptr<MessageThreadManager> & mgr) {
+    void setWThreadMgr(MessageThreadManager * mgr) {
         this->wThreadMgr = mgr;
     }
 
@@ -95,8 +87,7 @@ public:
  */
 class MessageThreadSender {
 private:
-    std::shared_ptr<MessageThreadManager> mgr;
-    std::shared_ptr<MessageThreadSender> sSelf;
+    MessageThreadManager * mgr;
 
     // Job queue here, allocated on SHM, needs to be added on initialization of this sender.
     SenderJobQueue * queue;
@@ -133,7 +124,6 @@ public:
             queue{queue},
             senderThreadsRunning{1},
             senderThreadWaiters{0},
-            sSelf{this},
             mgr{aMgr}
     {
         for(int i=0; i<SENDER_THREAD_NUM; i++){
