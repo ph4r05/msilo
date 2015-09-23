@@ -6,7 +6,20 @@
 #define OPENSIPS_1_11_2_TLS_SIPSALLOCATOR_H
 
 #include <limits>
+#include <memory>
 #include <iostream>
+
+// Smart pointers with custom deleter function, that will be provided by custom allocator.
+namespace ph4 {
+    template<class U>
+    using deleter = std::function<void(U *)>;
+
+    template<class U>
+    using unique_ptr = std::unique_ptr<U, deleter<U> >;
+
+    template<class U>
+    using shared_ptr = std::shared_ptr<U>;
+};
 
 template <class T>
 class SipsAllocator {

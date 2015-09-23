@@ -104,6 +104,37 @@ public:
         // Old version: heap deallocation, delete operator.
         //::operator delete((void*)p);
     }
+
+    template <typename U>
+    static ph4::unique_ptr<U> unique_ptr(U * p, SipsHeapAllocator<U> * alloc = nullptr, size_type num=1, bool destroy=true){
+        return ph4::unique_ptr<U>(p, [&](U* f) {
+            if (destroy) {
+                alloc->destroy(f);
+            }
+
+            alloc->deallocate(f, num);
+        });
+    }
+
+    template <typename U>
+    static ph4::shared_ptr<U> shared_ptr(U * p, SipsHeapAllocator<U> * alloc = nullptr, size_type num=1, bool destroy=true){
+        return ph4::shared_ptr<U>(p, [&](U* f) {
+            if (destroy) {
+                alloc->destroy(f);
+            }
+
+            alloc->deallocate(f, num);
+        }, alloc);
+    }
+
+    ph4::unique_ptr<T> unique_ptr(T * p, size_type num=1, bool destroy=true){
+        return SipsHeapAllocator<T>::unique_ptr(p, this, num, destroy);
+    }
+
+    ph4::shared_ptr<T> shared_ptr(T * p, size_type num=1, bool destroy=true){
+        return SipsHeapAllocator<T>::shared_ptr(p, this, num, destroy);
+    }
+
 };
 
 // return that all specializations of this allocator are interchangeable

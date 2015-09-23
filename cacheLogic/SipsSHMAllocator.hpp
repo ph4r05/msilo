@@ -1,12 +1,13 @@
 
 
-#ifndef OPENSIPS_1_11_2_TLS_SIPSALLOCATOR_H
-#define OPENSIPS_1_11_2_TLS_SIPSALLOCATOR_H
+#ifndef OPENSIPS_1_11_2_TLS_SIPSSHMALLOCATOR_H
+#define OPENSIPS_1_11_2_TLS_SIPSSHMALLOCATOR_H
 
 #include <limits>
 #include <iostream>
 #include "../../../mem/mem.h"
 #include "../../../mem/shm_mem.h"
+#include "SipsAllocator.hpp"
 
 /**
  * Allocator uses OpenSIPS facilities to allocate chunks on shared memory (SHM).
@@ -100,6 +101,37 @@ public:
         // Old version: heap deallocation, delete operator.
         //::operator delete((void*)p);
     }
+
+    template <typename U>
+    static ph4::unique_ptr<U> unique_ptr(U * p, SipsSHMAllocator<U> * alloc = nullptr, size_type num=1, bool destroy=true){
+        return ph4::unique_ptr<U>(p, [&](U* f) {
+            if (destroy) {
+                alloc->destroy(f);
+            }
+
+            alloc->deallocate(f, num);
+        });
+    }
+
+    template <typename U>
+    static ph4::shared_ptr<U> shared_ptr(U * p, SipsSHMAllocator<U> * alloc = nullptr, size_type num=1, bool destroy=true){
+        return ph4::shared_ptr<U>(p, [&](U* f) {
+            if (destroy) {
+                alloc->destroy(f);
+            }
+
+            alloc->deallocate(f, num);
+        }, alloc);
+    }
+
+    ph4::unique_ptr<T> unique_ptr(T * p, size_type num=1, bool destroy=true){
+        return SipsSHMAllocator<T>::unique_ptr(p, this, num, destroy);
+    }
+
+    ph4::shared_ptr<T> shared_ptr(T * p, size_type num=1, bool destroy=true){
+        return SipsSHMAllocator<T>::shared_ptr(p, this, num, destroy);
+    }
+
 };
 
 // return that all specializations of this allocator are interchangeable
@@ -115,4 +147,4 @@ bool operator!= (const SipsSHMAllocator<T1>&,
 }
 
 
-#endif //OPENSIPS_1_11_2_TLS_SIPSALLOCATOR_H
+#endif //OPENSIPS_1_11_2_TLS_SIPSSHMALLOCATOR_H
