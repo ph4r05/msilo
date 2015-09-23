@@ -11,6 +11,8 @@
 #include "../msfuncs.h"
 #include "../ms_msg_list.h"
 
+#define BODY_BUFFER_SIZE 2048
+
 // Static definitions.
 #pragma GCC diagnostic push
 #pragma GCC diagnostic warning "-Wno-write-strings"
@@ -101,8 +103,8 @@ void MessageThreadManager::send1(SenderQueueJob * job, MessageThreadSender * sen
 
     } else {
         // TODO: implement message loading.
-        char hdr_buf[2048];
-        char body_buf[2048];
+        char hdr_buf[BODY_BUFFER_SIZE];
+        char body_buf[BODY_BUFFER_SIZE];
 
         str str_vals[4], hdr_str , body_str;
         time_t rtime;
@@ -110,15 +112,15 @@ void MessageThreadManager::send1(SenderQueueJob * job, MessageThreadSender * sen
         time(&dumpId);
 
         hdr_str.s=hdr_buf;
-        hdr_str.len=2048;
+        hdr_str.len=BODY_BUFFER_SIZE;
         body_str.s=body_buf;
-        body_str.len=2048;
+        body_str.len=BODY_BUFFER_SIZE;
 
         PH_INFO("x: dumping [%d] messages for <%s>\n", RES_ROW_N(db_res), strReceiver.c_str());
         for(i = 0; i < RES_ROW_N(db_res); i++)
         {
             mid =  RES_ROWS(db_res)[i].values[0].val.int_val;
-            
+
             // Discover if message was already processed by this engine and waits somewhere.
             if(msg_list_check_msg(ml, mid)) {
                 LM_INFO("message[%d] mid=%d already sent.\n", i, mid);
@@ -132,7 +134,7 @@ void MessageThreadManager::send1(SenderQueueJob * job, MessageThreadSender * sen
             SET_STR_VAL(str_vals[3], db_res, i, 4); /* ctype */
             rtime = (time_t)RES_ROWS(db_res)[i].values[5/*inc time*/].val.int_val;
 
-            hdr_str.len = 2048;
+            hdr_str.len = BODY_BUFFER_SIZE;
             if(m_build_headers(&hdr_str, str_vals[3] /*ctype*/,
                                str_vals[0]/*from*/, rtime /*Date*/, (long) (dumpId * 1000l)) < 0)
             {
@@ -147,7 +149,7 @@ void MessageThreadManager::send1(SenderQueueJob * job, MessageThreadSender * sen
             PH_DBG("msg [%d-%d] for: %s\n", i+1, mid, strReceiver.c_str());
 
             /** sending using TM function: t_uac */
-            body_str.len = 2048;
+            body_str.len = BODY_BUFFER_SIZE;
             n = m_build_body(&body_str, rtime, str_vals[2/*body*/], 0);
             if(n<0) {
                 PH_DBG("sending simple body\n");
