@@ -74,6 +74,11 @@ private:
      */
     MessageThreadElement * getThreadAndLock(const MessageThreadMapKey & key);
 
+    /**
+     * Sends message via TM interface.
+     */
+    int sendMessage(str * to, str * from, str * headers, str * body, thread_tsx_callback * cb);
+
 public:
     // Take an allocator, rebind it to desired type in order to allocate memory in SHM.
     MessageThreadManager(const MainAllocator &alloc) :

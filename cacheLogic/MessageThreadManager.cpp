@@ -12,6 +12,7 @@
 #include "../ms_msg_list.h"
 
 #define BODY_BUFFER_SIZE 2048
+#define CONTACT_BUFFER_SIZE 256
 
 // Static definitions.
 #pragma GCC diagnostic push
@@ -44,9 +45,6 @@ int MessageThreadManager::dump(MessageThreadSender * sender, struct sip_msg *msg
     this->send1(job, sender);
     delete job;
 
-    //TODO: load all non-loaded messages from database, create threads.
-    //TODO: offer all loaded messages to the threads objects.
-    //TODO: start new sending if thread object is in NONE state or does not exist.
     return 0;
 }
 
@@ -77,6 +75,10 @@ int MessageThreadManager::tsx_callback(MessageThreadSender *sender, int code, Me
  */
 void MessageThreadManager::send1(SenderQueueJob * job, MessageThreadSender * sender){
     // TODO: implement.
+    // TODO: load all non-loaded messages from database, create threads.
+    // TODO: offer all loaded messages to the threads objects.
+    // TODO: start new sending if thread object is in NONE state or does not exist.
+
     // TODO: load data from database
     ShmString & strReceiver = job->receiver;
 
@@ -119,7 +121,7 @@ void MessageThreadManager::send1(SenderQueueJob * job, MessageThreadSender * sen
         PH_INFO("x: dumping [%d] messages for <%s>\n", RES_ROW_N(db_res), strReceiver.c_str());
         for(i = 0; i < RES_ROW_N(db_res); i++)
         {
-            mid =  RES_ROWS(db_res)[i].values[0].val.int_val;
+            mid = RES_ROWS(db_res)[i].values[0].val.int_val;
 
             // Discover if message was already processed by this engine and waits somewhere.
             if(msg_list_check_msg(ml, mid)) {
@@ -132,7 +134,33 @@ void MessageThreadManager::send1(SenderQueueJob * job, MessageThreadSender * sen
             SET_STR_VAL(str_vals[1], db_res, i, 2); /* to */
             SET_STR_VAL(str_vals[2], db_res, i, 3); /* body */
             SET_STR_VAL(str_vals[3], db_res, i, 4); /* ctype */
-            rtime = (time_t)RES_ROWS(db_res)[i].values[5/*inc time*/].val.int_val;
+            rtime = (time_t)RES_ROWS(db_res)[i].values[5].val.int_val; /*inc time*/
+
+            // Build sender string.
+            char senderBuff[CONTACT_BUFFER_SIZE];
+            if (str_vals[0].len >= CONTACT_BUFFER_SIZE){
+                PH_WARN("Contact name too long %.*s\n", str_vals[0].len, str_vals[0].s);
+                continue;
+            }
+
+            memcpy(senderBuff, str_vals[0].s, sizeof(char) * str_vals[0].len);
+            ShmString strSender(senderBuff);
+
+            // Allocate new thread key, use custom unique_ptr so it is correctly deallocated after block finishes.
+            ph4::unique_ptr<MessageThreadMapKey> keyPtr = this->alloc.unique_ptr(
+                    MessageThreadMapKeyFactory<decltype(this->alloc)>::build(strReceiver, strSender, this->alloc));
+
+            // Pointer is managed by the manager.
+            MessageThreadElement * elem = this->getThreadAndLock(*keyPtr);
+            if (elem == nullptr){
+                PH_WARN("Could not obtain valid message thread element for thread %s:%s", strReceiver.c_str(), strSender.c_str());
+                continue;
+            }
+
+            // Add this particular message to the message list. Offer. Message can be accepted or rejected.
+            // If message was rejected by the element, do nothing. If was accepted and state was NONE, trigger new send(receiver,sender) job.
+
+
 
             hdr_str.len = BODY_BUFFER_SIZE;
             if(m_build_headers(&hdr_str, str_vals[3] /*ctype*/,
@@ -212,7 +240,6 @@ void MessageThreadManager::send2(SenderQueueJob * job, MessageThreadSender * sen
     // TODO: empty cache & empty database -> set to NONE, add to pool, dealloc, stop.
 }
 
-
 MessageThreadElement * MessageThreadManager::getThreadAndLock(const MessageThreadMapKey & key) {
     // Lock global manager mutex, map manipulation in place.
     bip::scoped_lock<bip::interprocess_mutex> lock(this->mutex);
@@ -228,11 +255,30 @@ MessageThreadElement * MessageThreadManager::getThreadAndLock(const MessageThrea
 
         } catch(std::bad_alloc){
             PH_WARN("Bad allocation in message thread element alloc");
+            elem = nullptr;
         }
 
         return elem;
 
     } else {
         return iter->second;
+
     }
+}
+
+int MessageThreadManager::sendMessage(str *to, str *from, str *headers, str *body, thread_tsx_callback *cb) {
+
+    int res = apiHelper.tmRequest(&msg_type,          /* Type of the message */
+                            to,                       /* Request-URI (To) */
+                            to,                       /* To */
+                            from,                     /* From */
+                            headers,                  /* Optional headers including CRLF */
+                            body,                     /* Message body */
+                            0,                        /* outbound uri */
+                            thread_mgr_tm_callback,   /* Callback function */
+                            (void*)cb,                /* Callback parameter */
+                            NULL
+    );
+
+    return res;
 }
