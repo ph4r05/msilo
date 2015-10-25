@@ -138,6 +138,7 @@ void**  ms_offline_message_sp = NULL;
 
 int  ms_expire_time = 259200;
 int  ms_check_time = 60;
+int  ms_retry_count = 0;
 int  ms_send_time = 0;
 int  ms_clean_period = 10;
 int  ms_use_contact = 1;
@@ -193,6 +194,7 @@ static param_export_t params[]={
 	{ "outbound_proxy",   STR_PARAM, &ms_outbound_proxy.s     },
 	{ "expire_time",      INT_PARAM, &ms_expire_time          },
 	{ "check_time",       INT_PARAM, &ms_check_time           },
+	{ "retry_count",      INT_PARAM, &ms_retry_count          },
 	{ "send_time",        INT_PARAM, &ms_send_time            },
 	{ "clean_period",     INT_PARAM, &ms_clean_period         },
 	{ "use_contact",      INT_PARAM, &ms_use_contact          },
@@ -951,10 +953,12 @@ static int m_dump(struct sip_msg* msg, char* owner, char* str2)
 
 	for(i = 0; i < RES_ROW_N(db_res); i++)
 	{
+		int curFlags = 0;
+		int curRetry = 0;
 		mid =  RES_ROWS(db_res)[i].values[0].val.int_val;
-		if(msg_list_check_msg(ml, mid))
+		if(msg_list_check_msg(ml, mid, &curRetry, &curFlags))
 		{
-			LM_INFO("message[%d] mid=%d already sent.\n", i, mid);
+			LM_INFO("message[%d] mid=%d already sent. Flags: %d, retry: %d\n", i, mid, curFlags, curRetry);
 			continue;
 		}
 
@@ -1035,7 +1039,7 @@ void m_clean_silo(unsigned int ticks, void *param)
 
 	LM_DBG("cleaning stored messages - %d\n", ticks);
 
-	msg_list_check(ml); // Separates message with DONE / ERROR in sent_list to the done_list.
+	msg_list_check(ml); // Separates message with flag (DONE | ERROR) in sent_list to the done_list.
 	mle = p = msg_list_reset(ml); // Extracts done_list and returns it here.
 	n = 0;
 	while(p)
@@ -1119,6 +1123,133 @@ void destroy(void)
 		msilo_dbf.close(db_con);
 }
 
+int resend(int mid){
+	// Load message with given MID from database.
+	db_key_t db_keys[1];
+	db_key_t ob_key;
+	db_op_t  db_ops[1];
+	db_val_t db_vals[1];
+	db_key_t db_cols[6];
+	db_res_t* db_res = NULL;
+	int i, db_no_cols = 6, db_no_keys = 1, n;
+	char hdr_buf[1024];
+	char body_buf[1024];
+
+	str str_vals[4], hdr_str , body_str;
+	time_t rtime;
+	time_t dumpId;
+
+	// Not implemented: set flag to error
+	if (ms_retry_count == 0) {
+		msg_list_set_flag(ml, mid, MS_MSG_ERRO);
+		return -1;
+	}
+
+	/* init */
+	ob_key = &sc_mid;
+
+	db_keys[0]=&sc_mid;
+	db_ops[0]=OP_EQ;
+
+	db_vals[0].type = DB_INT;
+	db_vals[0].nul = 0;
+	db_vals[0].val.int_val = mid;
+
+	db_cols[0]=&sc_mid;
+	db_cols[1]=&sc_from;
+	db_cols[2]=&sc_to;
+	db_cols[3]=&sc_body;
+	db_cols[4]=&sc_ctype;
+	db_cols[5]=&sc_inc_time;
+
+	hdr_str.s=hdr_buf;
+	hdr_str.len=1024;
+	body_str.s=body_buf;
+	body_str.len=1024;
+
+	/* get the owner */
+	time(&dumpId);
+	if (msilo_dbf.use_table(db_con, &ms_db_table) < 0)
+	{
+		LM_ERR("resend: failed to use_table\n");
+		goto error;
+	}
+
+	if((msilo_dbf.query(db_con,db_keys,db_ops,db_vals,db_cols,db_no_keys,
+						db_no_cols, ob_key, &db_res)!=0) || (RES_ROW_N(db_res) <= 0))
+	{
+		LM_DBG("resend: no stored message for mid=%d!\n", mid);
+		goto done;
+	}
+
+	LM_INFO("resend: dumping [%d] messages for mid: %d\n",
+			RES_ROW_N(db_res), mid);
+
+	for(i = 0; i < RES_ROW_N(db_res); i++)
+	{
+		mid = RES_ROWS(db_res)[i].values[0].val.int_val;
+
+		memset(str_vals, 0, 4*sizeof(str));
+		SET_STR_VAL(str_vals[0], db_res, i, 1); /* from */
+		SET_STR_VAL(str_vals[1], db_res, i, 2); /* to */
+		SET_STR_VAL(str_vals[2], db_res, i, 3); /* body */
+		SET_STR_VAL(str_vals[3], db_res, i, 4); /* ctype */
+		rtime = (time_t)RES_ROWS(db_res)[i].values[5/*inc time*/].val.int_val;
+
+		hdr_str.len = 1024;
+		if(m_build_headers(&hdr_str, str_vals[3] /*ctype*/,
+						   str_vals[0]/*from*/, rtime /*Date*/, (long) (dumpId * 1000l)) < 0)
+		{
+			LM_ERR("resend: headers building failed [%d]\n", mid);
+			if (msilo_dbf.free_result(db_con, db_res) < 0)
+				LM_ERR("resend: failed to free the query result\n");
+			msg_list_set_flag(ml, mid, MS_MSG_ERRO);
+			goto error;
+		}
+
+		LM_DBG("resend: msg [%d-%d] for: %.*s\n", i+1, mid,	str_vals[1].len, str_vals[1].s);
+
+		/** sending using TM function: t_uac */
+		body_str.len = 1024;
+		n = m_build_body(&body_str, rtime, str_vals[2/*body*/], 0);
+		if(n<0)
+			LM_DBG("resend: sending simple body\n");
+		else
+			LM_DBG("resend: sending composed body\n");
+
+		int res = tmb.t_request(&msg_type,  /* Type of the message */
+								&str_vals[1],     /* Request-URI (To) */
+								&str_vals[1],     /* To */
+								&str_vals[0],     /* From */
+								&hdr_str,         /* Optional headers including CRLF */
+								(n<0)?&str_vals[2]:&body_str, /* Message body */
+								(ms_outbound_proxy.s)?&ms_outbound_proxy:0,
+				/* outbound uri */
+								m_tm_callback,    /* Callback function */
+								(void*)(long)mid, /* Callback parameter */
+								NULL
+		);
+
+		if (res < 0){
+			LM_WARN("resend: message sending failed [%d], res=%d messages for <%.*s>!\n",
+					mid, res, str_vals[1].len, str_vals[1].s);
+		}
+	}
+
+done:
+	/**
+	 * Free the result because we don't need it
+	 * anymore
+	 */
+	if (db_res!=NULL && msilo_dbf.free_result(db_con, db_res) < 0)
+		LM_ERR("resend: failed to free result of query\n");
+
+	return 1;
+error:
+	return -1;
+
+}
+
 /**
  * TM callback function - delete message from database if was sent OK
  */
@@ -1139,12 +1270,20 @@ void m_tm_callback( struct cell *t, int type, struct tmcb_params *ps)
 	}
 	if(ps->code >= 300)
 	{
-		LM_INFO("message <%d> was not sent successfully\n", *((int*)ps->param));
-		msg_list_set_flag(ml, *((int*)ps->param), MS_MSG_ERRO);
+		const int mid = *((int*)ps->param);
+		int retryCount = 0;
+		int shouldResend = 0;
+
+		shouldResend = msg_list_should_retry(ml, mid, ms_retry_count, &retryCount, MS_MSG_ERRO);
+		LM_INFO("message <%d> was not sent successfully, resendCtr: %d, shouldResend: %d\n", mid, retryCount, shouldResend);
+
+		if (shouldResend){
+			resend(mid);
+		}
 		goto done;
 	}
 
-	LM_DBG("message <%d> was sent successfully\n", *((int*)ps->param));
+	LM_INFO("message <%d> was sent successfully\n", *((int*)ps->param));
 	msg_list_set_flag(ml, *((int*)ps->param), MS_MSG_DONE);
 
 done:
@@ -1224,7 +1363,7 @@ void m_send_ontimer(unsigned int ticks, void *param)
 	for(i = 0; i < RES_ROW_N(db_res); i++)
 	{
 		mid =  RES_ROWS(db_res)[i].values[0].val.int_val;
-		if(msg_list_check_msg(ml, mid))
+		if(msg_list_check_msg(ml, mid, NULL, NULL))
 		{
 			LM_DBG("message[%d] mid=%d already sent.\n", i, mid);
 			continue;

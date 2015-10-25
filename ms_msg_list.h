@@ -32,11 +32,19 @@
 
 #include "../../locking.h"
 
-#define MS_MSG_NULL	0
-#define MS_MSG_SENT	1
-#define MS_MSG_DONE	4
-#define MS_MSG_ERRO	8
-#define MS_MSG_TSND	16
+#define MS_MSG_NULL	(0)
+#define MS_MSG_SENT	(1<<0)
+#define MS_MSG_DONE	(1<<2)
+#define MS_MSG_ERRO (1<<3)
+#define MS_MSG_TSND	(1<<4)
+
+// Message was sent, but delivery transaction failed.
+// Retry until MS_MSG_RETRY_LIMIT retry count is reached. Then switch to failed state.
+#define MS_MSG_RETRY (1<<5)
+
+// Message is queued in the sending list, do not delete it from the list.
+// Sender thread takes care about it.
+#define MS_MSG_QUEUED (1<<6)
 
 #define MS_SEM_SENT	0
 #define MS_SEM_DONE 1
@@ -45,10 +53,13 @@
 #define MSG_LIST_ERR	-1
 #define MSG_LIST_EXIST	1
 
+#define MS_MSG_RETRY_LIMIT 12
+
 typedef struct _msg_list_el
 {
 	int msgid;
 	int flag;
+	int retryCtr; // Retry counter for failed message.
 	struct _msg_list_el * prev;
 	struct _msg_list_el * next;
 } t_msg_list_el, *msg_list_el;
@@ -69,8 +80,9 @@ void msg_list_el_free_all(msg_list_el);
 
 msg_list msg_list_init();
 void msg_list_free(msg_list);
-int msg_list_check_msg(msg_list, int);
+int msg_list_check_msg(msg_list, int, int *, int *);
 int msg_list_set_flag(msg_list, int, int);
+int msg_list_should_retry(msg_list ml, int mid, int limit, int * retryCnt, int fl);
 int msg_list_check(msg_list);
 msg_list_el msg_list_reset(msg_list);
 
