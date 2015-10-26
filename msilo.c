@@ -48,6 +48,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <time.h>
+#include <pthread.h>
 
 #include "../../sr_module.h"
 #include "../../dprint.h"
@@ -65,12 +66,16 @@
 #include "../../mod_fix.h"
 
 #include "../tm/tm_load.h"
+#include "../../pt.h"
 
 #include "ms_msg_list.h"
+#include "msg_retry.h"
 #include "msfuncs.h"
 
 #define MAX_DEL_KEYS	1
+#define MAX_PEEK_NUM	10
 #define NR_KEYS			10
+#define PH_SQL_BUF_LEN 2048
 
 static str sc_mid      = str_init("id");        /* 0 */
 static str sc_from     = str_init("src_addr");  /* 1 */
@@ -116,6 +121,7 @@ static db_func_t msilo_dbf;
 
 /** precessed msg list - used for dumping the messages */
 msg_list ml = NULL;
+retry_list rl = NULL;
 
 /** TM bind */
 struct tm_binds tmb;
@@ -169,6 +175,48 @@ int check_message_support(struct sip_msg* msg);
 
 /** TM callback function */
 static void m_tm_callback( struct cell *t, int type, struct tmcb_params *ps);
+
+// --------------------------------------------------------
+/** Sender thread */
+#define SENDER_THREAD_NUM 1
+#define SENDER_THREAD_WAIT_MS 100
+static volatile int senderThreadsRunning;
+static int senderThreadWaiters;
+
+pthread_mutex_t * pSenderThreadQueueCondMutex = NULL;
+pthread_mutexattr_t senderThreadQueueCondMutexAttr;
+
+pthread_cond_t * pSenderThreadQueueCond = NULL;
+pthread_condattr_t senderThreadQueueCondAttr;
+
+typedef struct t_senderThreadArg_ {
+	int threadId;
+	int rank;
+
+} t_senderThreadArg, *senderThreadArg;
+t_senderThreadArg senderThreadsArgs[SENDER_THREAD_NUM];
+pthread_t senderThreads[SENDER_THREAD_NUM];
+
+static int initSenderThreads(void);
+static int destroySenderThreads(void);
+static int initChildSenderThreads(void);
+static int spawnSenderThreads(void);
+static int terminateSenderThreads(void);
+static void *senderThreadMain(void *varg);
+
+// https://voipmagazine.wordpress.com/tag/extra-process/
+int* sender_pid;
+int pid = 0;
+static int msg_process_prefork(void);
+static int msg_process_postfork(void);
+static void msg_process(int rank);
+
+static proc_export_t procs[] = {
+		// name, pre-fork, post-fork, function, number, flags
+		{"MSG sender",  msg_process_prefork,  msg_process_postfork, msg_process, 1, PROC_FLAG_INITCHILD},
+		{0,0,0,0,0,0}
+};
+// --------------------------------------------------------
 
 static cmd_export_t cmds[]={
 	{"m_store",  (cmd_function)m_store, 0, 0, 0,
@@ -247,7 +295,7 @@ struct module_exports exports= {
 #endif
 	0,          /* exported MI functions */
 	0,          /* exported pseudo-variables */
-	0,          /* extra processes */
+	procs,          /* extra processes */
 	mod_init,   /* module initialization function */
 	(response_function) 0,       /* response handler */
 	(destroy_function) destroy,  /* module destroy function */
@@ -401,6 +449,14 @@ static int mod_init(void)
 		LM_ERR("can't initialize msg list\n");
 		return -1;
 	}
+
+	rl = retry_list_init();
+	if(rl==NULL)
+	{
+		LM_ERR("can't initialize retry list\n");
+		return -1;
+	}
+
 	if(ms_check_time<0)
 	{
 		LM_ERR("bad check time value\n");
@@ -415,7 +471,8 @@ static int mod_init(void)
 	if(ms_outbound_proxy.s!=NULL)
 		ms_outbound_proxy.len = strlen(ms_outbound_proxy.s);
 
-	return 0;
+	// Sender thread startup.
+	return initSenderThreads() == 0 ? 0 : -1;
 }
 
 /**
@@ -444,7 +501,11 @@ static int child_init(int rank)
 
 		LM_DBG("#%d database connection opened successfully\n", rank);
 	}
+
 	return 0;
+
+	// Sender threads.
+	//return initChildSenderThreads() == 0 ? 0 : -1;
 }
 
 /**
@@ -810,14 +871,14 @@ static int m_dump(struct sip_msg* msg, char* owner, char* str2)
 	db_val_t db_vals[3];
 	db_key_t db_cols[6];
 	db_res_t* db_res = NULL;
-	int i, db_no_cols = 6, db_no_keys = 3, mid, n;
-	static char hdr_buf[1024];
-	static char body_buf[1024];
+	int i, db_no_cols = 6, db_no_keys = 3, mid; //n;
+//	static char hdr_buf[1024];
+//	static char body_buf[1024];
 	struct sip_uri puri;
 	str owner_s;
 
-	str str_vals[4], hdr_str , body_str;
-	time_t rtime;
+//	str str_vals[4], hdr_str , body_str;
+//	time_t rtime;
 	time_t dumpId;
 
 	/* init */
@@ -839,10 +900,10 @@ static int m_dump(struct sip_msg* msg, char* owner, char* str2)
 
 
 	LM_DBG("------------ start ------------\n");
-	hdr_str.s=hdr_buf;
-	hdr_str.len=1024;
-	body_str.s=body_buf;
-	body_str.len=1024;
+//	hdr_str.s=hdr_buf;
+//	hdr_str.len=1024;
+//	body_str.s=body_buf;
+//	body_str.len=1024;
 
 	/* check for TO header */
 	if(msg->to==NULL && (parse_headers(msg, HDR_TO_F, 0)==-1
@@ -953,61 +1014,64 @@ static int m_dump(struct sip_msg* msg, char* owner, char* str2)
 
 	for(i = 0; i < RES_ROW_N(db_res); i++)
 	{
-		int curFlags = 0;
-		int curRetry = 0;
+		int cur_flags = 0;
+		int cur_retry = 0;
 		mid =  RES_ROWS(db_res)[i].values[0].val.int_val;
-		if(msg_list_check_msg(ml, mid, &curRetry, &curFlags))
+		if(msg_list_check_msg(ml, mid, &cur_retry, &cur_flags))
 		{
-			LM_INFO("message[%d] mid=%d already sent. Flags: %d, retry: %d\n", i, mid, curFlags, curRetry);
+			LM_INFO("message[%d] mid=%d already sent. Flags: %d, retry: %d\n", i, mid, cur_flags, cur_retry);
 			continue;
 		}
 
-		memset(str_vals, 0, 4*sizeof(str));
-		SET_STR_VAL(str_vals[0], db_res, i, 1); /* from */
-		SET_STR_VAL(str_vals[1], db_res, i, 2); /* to */
-		SET_STR_VAL(str_vals[2], db_res, i, 3); /* body */
-		SET_STR_VAL(str_vals[3], db_res, i, 4); /* ctype */
-		rtime =
-			(time_t)RES_ROWS(db_res)[i].values[5/*inc time*/].val.int_val;
+		// Add to the retry queue, signal to the executor.
+		retry_add_element(rl, mid, 0, dumpId + 3);
 
-		hdr_str.len = 1024;
-		if(m_build_headers(&hdr_str, str_vals[3] /*ctype*/,
-				str_vals[0]/*from*/, rtime /*Date*/, (long) (dumpId * 1000l)) < 0)
-		{
-			LM_ERR("headers building failed [%d]\n", mid);
-			if (msilo_dbf.free_result(db_con, db_res) < 0)
-				LM_ERR("failed to free the query result\n");
-			msg_list_set_flag(ml, mid, MS_MSG_ERRO);
-			goto error;
-		}
-
-		LM_DBG("msg [%d-%d] for: %.*s\n", i+1, mid,	pto->uri.len, pto->uri.s);
-
-		/** sending using TM function: t_uac */
-		body_str.len = 1024;
-		n = m_build_body(&body_str, rtime, str_vals[2/*body*/], 0);
-		if(n<0)
-			LM_DBG("sending simple body\n");
-		else
-			LM_DBG("sending composed body\n");
-
-			int res = tmb.t_request(&msg_type,  /* Type of the message */
-					&str_vals[1],     /* Request-URI (To) */
-					&str_vals[1],     /* To */
-					&str_vals[0],     /* From */
-					&hdr_str,         /* Optional headers including CRLF */
-					(n<0)?&str_vals[2]:&body_str, /* Message body */
-					(ms_outbound_proxy.s)?&ms_outbound_proxy:0,
-									/* outbound uri */
-					m_tm_callback,    /* Callback function */
-					(void*)(long)mid, /* Callback parameter */
-					NULL
-				);
-
-			if (res < 0){
-				LM_WARN("message sending failed [%d], res=%d messages for <%.*s>!\n",
-						mid, res, pto->uri.len, pto->uri.s);
-			}
+//		memset(str_vals, 0, 4*sizeof(str));
+//		SET_STR_VAL(str_vals[0], db_res, i, 1); /* from */
+//		SET_STR_VAL(str_vals[1], db_res, i, 2); /* to */
+//		SET_STR_VAL(str_vals[2], db_res, i, 3); /* body */
+//		SET_STR_VAL(str_vals[3], db_res, i, 4); /* ctype */
+//		rtime =
+//			(time_t)RES_ROWS(db_res)[i].values[5/*inc time*/].val.int_val;
+//
+//		hdr_str.len = 1024;
+//		if(m_build_headers(&hdr_str, str_vals[3] /*ctype*/,
+//				str_vals[0]/*from*/, rtime /*Date*/, (long) (dumpId * 1000l)) < 0)
+//		{
+//			LM_ERR("headers building failed [%d]\n", mid);
+//			if (msilo_dbf.free_result(db_con, db_res) < 0)
+//				LM_ERR("failed to free the query result\n");
+//			msg_list_set_flag(ml, mid, MS_MSG_ERRO);
+//			goto error;
+//		}
+//
+//		LM_DBG("msg [%d-%d] for: %.*s\n", i+1, mid,	pto->uri.len, pto->uri.s);
+//
+//		/** sending using TM function: t_uac */
+//		body_str.len = 1024;
+//		n = m_build_body(&body_str, rtime, str_vals[2/*body*/], 0);
+//		if(n<0)
+//			LM_DBG("sending simple body\n");
+//		else
+//			LM_DBG("sending composed body\n");
+//
+//			int res = tmb.t_request(&msg_type,  /* Type of the message */
+//					&str_vals[1],     /* Request-URI (To) */
+//					&str_vals[1],     /* To */
+//					&str_vals[0],     /* From */
+//					&hdr_str,         /* Optional headers including CRLF */
+//					(n<0)?&str_vals[2]:&body_str, /* Message body */
+//					(ms_outbound_proxy.s)?&ms_outbound_proxy:0,
+//									/* outbound uri */
+//					m_tm_callback,    /* Callback function */
+//					(void*)(long)mid, /* Callback parameter */
+//					NULL
+//				);
+//
+//			if (res < 0){
+//				LM_WARN("message sending failed [%d], res=%d messages for <%.*s>!\n",
+//						mid, res, pto->uri.len, pto->uri.s);
+//			}
 	}
 
 done:
@@ -1110,184 +1174,19 @@ void m_clean_silo(unsigned int ticks, void *param)
 	}
 }
 
-
 /**
  * destroy function
  */
 void destroy(void)
 {
 	LM_DBG("msilo destroy module ...\n");
+	destroySenderThreads();
+
 	msg_list_free(ml);
+	retry_list_free(rl);
 
 	if(db_con && msilo_dbf.close)
 		msilo_dbf.close(db_con);
-}
-
-int resend(int mid){
-	// Load message with given MID from database.
-	db_key_t db_keys[1];
-	db_key_t ob_key;
-	db_op_t  db_ops[1];
-	db_val_t db_vals[1];
-	db_key_t db_cols[6];
-	db_res_t* db_res = NULL;
-	int i, db_no_cols = 6, db_no_keys = 1, n;
-	char hdr_buf[1024];
-	char body_buf[1024];
-
-	str str_vals[4], hdr_str , body_str;
-	time_t rtime;
-	time_t dumpId;
-
-	// Not implemented: set flag to error
-	if (ms_retry_count == 0) {
-		msg_list_set_flag(ml, mid, MS_MSG_ERRO);
-		return -1;
-	}
-
-	/* init */
-	ob_key = &sc_mid;
-
-	db_keys[0]=&sc_mid;
-	db_ops[0]=OP_EQ;
-
-	db_vals[0].type = DB_INT;
-	db_vals[0].nul = 0;
-	db_vals[0].val.int_val = mid;
-
-	db_cols[0]=&sc_mid;
-	db_cols[1]=&sc_from;
-	db_cols[2]=&sc_to;
-	db_cols[3]=&sc_body;
-	db_cols[4]=&sc_ctype;
-	db_cols[5]=&sc_inc_time;
-
-	hdr_str.s=hdr_buf;
-	hdr_str.len=1024;
-	body_str.s=body_buf;
-	body_str.len=1024;
-
-	/* get the owner */
-	time(&dumpId);
-	if (msilo_dbf.use_table(db_con, &ms_db_table) < 0)
-	{
-		LM_ERR("resend: failed to use_table\n");
-		goto error;
-	}
-
-	if((msilo_dbf.query(db_con,db_keys,db_ops,db_vals,db_cols,db_no_keys,
-						db_no_cols, ob_key, &db_res)!=0) || (RES_ROW_N(db_res) <= 0))
-	{
-		LM_DBG("resend: no stored message for mid=%d!\n", mid);
-		goto done;
-	}
-
-	LM_INFO("resend: dumping [%d] messages for mid: %d\n",
-			RES_ROW_N(db_res), mid);
-
-	for(i = 0; i < RES_ROW_N(db_res); i++)
-	{
-		mid = RES_ROWS(db_res)[i].values[0].val.int_val;
-
-		memset(str_vals, 0, 4*sizeof(str));
-		SET_STR_VAL(str_vals[0], db_res, i, 1); /* from */
-		SET_STR_VAL(str_vals[1], db_res, i, 2); /* to */
-		SET_STR_VAL(str_vals[2], db_res, i, 3); /* body */
-		SET_STR_VAL(str_vals[3], db_res, i, 4); /* ctype */
-		rtime = (time_t)RES_ROWS(db_res)[i].values[5/*inc time*/].val.int_val;
-
-		hdr_str.len = 1024;
-		if(m_build_headers(&hdr_str, str_vals[3] /*ctype*/,
-						   str_vals[0]/*from*/, rtime /*Date*/, (long) (dumpId * 1000l)) < 0)
-		{
-			LM_ERR("resend: headers building failed [%d]\n", mid);
-			if (msilo_dbf.free_result(db_con, db_res) < 0)
-				LM_ERR("resend: failed to free the query result\n");
-			msg_list_set_flag(ml, mid, MS_MSG_ERRO);
-			goto error;
-		}
-
-		LM_DBG("resend: msg [%d-%d] for: %.*s\n", i+1, mid,	str_vals[1].len, str_vals[1].s);
-
-		/** sending using TM function: t_uac */
-		body_str.len = 1024;
-		n = m_build_body(&body_str, rtime, str_vals[2/*body*/], 0);
-		if(n<0)
-			LM_DBG("resend: sending simple body\n");
-		else
-			LM_DBG("resend: sending composed body\n");
-
-		int res = tmb.t_request(&msg_type,  /* Type of the message */
-								&str_vals[1],     /* Request-URI (To) */
-								&str_vals[1],     /* To */
-								&str_vals[0],     /* From */
-								&hdr_str,         /* Optional headers including CRLF */
-								(n<0)?&str_vals[2]:&body_str, /* Message body */
-								(ms_outbound_proxy.s)?&ms_outbound_proxy:0,
-				/* outbound uri */
-								m_tm_callback,    /* Callback function */
-								(void*)(long)mid, /* Callback parameter */
-								NULL
-		);
-
-		if (res < 0){
-			LM_WARN("resend: message sending failed [%d], res=%d messages for <%.*s>!\n",
-					mid, res, str_vals[1].len, str_vals[1].s);
-		}
-	}
-
-done:
-	/**
-	 * Free the result because we don't need it
-	 * anymore
-	 */
-	if (db_res!=NULL && msilo_dbf.free_result(db_con, db_res) < 0)
-		LM_ERR("resend: failed to free result of query\n");
-
-	return 1;
-error:
-	return -1;
-
-}
-
-/**
- * TM callback function - delete message from database if was sent OK
- */
-void m_tm_callback( struct cell *t, int type, struct tmcb_params *ps)
-{
-	if(ps->param==NULL || *ps->param==0)
-	{
-		LM_INFO("message id not received\n");
-		goto done;
-	}
-
-	LM_INFO("completed with status %d [mid: %ld/%d]\n",
-		ps->code, (long)ps->param, *((int*)ps->param));
-	if(!db_con)
-	{
-		LM_ERR("db_con is NULL\n");
-		goto done;
-	}
-	if(ps->code >= 300)
-	{
-		const int mid = *((int*)ps->param);
-		int retryCount = 0;
-		int shouldResend = 0;
-
-		shouldResend = msg_list_should_retry(ml, mid, ms_retry_count, &retryCount, MS_MSG_ERRO);
-		LM_INFO("message <%d> was not sent successfully, resendCtr: %d, shouldResend: %d\n", mid, retryCount, shouldResend);
-
-		if (shouldResend){
-			resend(mid);
-		}
-		goto done;
-	}
-
-	LM_INFO("message <%d> was sent successfully\n", *((int*)ps->param));
-	msg_list_set_flag(ml, *((int*)ps->param), MS_MSG_DONE);
-
-done:
-	return;
 }
 
 void m_send_ontimer(unsigned int ticks, void *param)
@@ -1553,3 +1452,451 @@ int check_message_support(struct sip_msg* msg)
 	return -1;
 }
 
+static int msg_process_prefork(void){
+	LM_INFO("MSG process prefork");
+	return 0;
+}
+
+static int msg_process_postfork(void){
+	LM_INFO("MSG process postfork");
+	return 0;
+}
+
+static void msg_process(int rank)
+{
+	/* if this blasted server had a decent I/O loop, we'd
+	 * just add our socket to it and connect().
+	 */
+	pid = my_pid();
+	*sender_pid = pid;
+
+	LM_DBG("started child message sender process, rank: %d\n", rank);
+	senderThreadsRunning = 1;
+
+	t_senderThreadArg arg;
+	arg.rank = rank;
+	arg.threadId = 0;
+	senderThreadMain(&arg);
+}
+
+/**
+ * Called when server starts so shared variables for all processes are allocated and initialized.
+ */
+static int initSenderThreads(void){
+	senderThreadsRunning = 1;
+	senderThreadWaiters = 0;
+
+	sender_pid = (int*)shm_malloc(sizeof(int));
+	if(sender_pid == NULL) {
+		LM_ERR("No more shared memory\n");
+		return -1;
+	}
+
+	/* Initialise attribute to mutex. */
+	pthread_mutexattr_init(&senderThreadQueueCondMutexAttr);
+	pthread_mutexattr_setpshared(&senderThreadQueueCondMutexAttr, PTHREAD_PROCESS_SHARED);
+
+	/* Allocate memory to pmutex here. */
+	pSenderThreadQueueCondMutex = (pthread_mutex_t *)shm_malloc(sizeof(pthread_mutex_t));
+	if (pSenderThreadQueueCondMutex == NULL){
+		LM_CRIT("Could not allocate memory for mutex");
+		return -1;
+	}
+
+	/* Initialise mutex. */
+	pthread_mutex_init(pSenderThreadQueueCondMutex, &senderThreadQueueCondMutexAttr);
+
+	/* Initialise attribute to condition. */
+	pthread_condattr_init(&senderThreadQueueCondAttr);
+	pthread_condattr_setpshared(&senderThreadQueueCondAttr, PTHREAD_PROCESS_SHARED);
+
+	/* Allocate memory to pcond here. */
+	pSenderThreadQueueCond = (pthread_cond_t *)shm_malloc(sizeof(pthread_cond_t));
+	if (pSenderThreadQueueCond == NULL){
+		LM_CRIT("Could not allocate memory for cond variable");
+		return -1;
+	}
+
+	/* Initialise condition. */
+	pthread_cond_init(pSenderThreadQueueCond, &senderThreadQueueCondAttr);
+
+	return 0;
+}
+
+/**
+ * Terminates running sender threads.
+ */
+static int destroySenderThreads(void){
+	terminateSenderThreads();
+	// TODO: wait for termination so mutex & conditions are not destroyed before memory release.
+	sleep(1);
+
+	// Clean up.
+	if (pSenderThreadQueueCondMutex != NULL) {
+		pthread_mutex_destroy(pSenderThreadQueueCondMutex);
+		shm_free(pSenderThreadQueueCondMutex);
+		pSenderThreadQueueCondMutex = NULL;
+	}
+
+	pthread_mutexattr_destroy(&senderThreadQueueCondMutexAttr);
+
+	if (pSenderThreadQueueCond != NULL) {
+		pthread_cond_destroy(pSenderThreadQueueCond);
+		shm_free(pSenderThreadQueueCond);
+		pSenderThreadQueueCond = NULL;
+	}
+
+	pthread_condattr_destroy(&senderThreadQueueCondAttr);
+
+	if (sender_pid != NULL){
+		shm_free(sender_pid);
+		sender_pid = NULL;
+	}
+
+	return 0;
+}
+
+/**
+ * Called when worker process is initialized. Spawns sender threads.
+ */
+static int initChildSenderThreads(void){
+	return spawnSenderThreads();
+}
+
+/**
+ * Routine starts given amount of sender threads.
+ */
+static int spawnSenderThreads(void){
+	int t = 0;
+	int rc = 0;
+	senderThreadsRunning = 1;
+
+	for(t = 0; t < SENDER_THREAD_NUM; t++){
+		rc = pthread_create(&senderThreads[t], NULL, senderThreadMain, (void *)&senderThreadsArgs[t]);
+		if (rc){
+			LM_ERR("ERROR; return code from pthread_create() is %d\n", rc);
+			break;
+		}
+	}
+
+	// Check for fails.
+	if (rc){
+		terminateSenderThreads();
+		return -1;
+	}
+
+	return 0;
+}
+
+/**
+ * Sets all sender threads to terminate.
+ */
+static int terminateSenderThreads(void){
+	// Running flag set to false.
+	senderThreadsRunning = 0;
+	if (pSenderThreadQueueCondMutex == NULL || pSenderThreadQueueCond == NULL){
+		return -1;
+	}
+
+	// Broadcast signal to check the queue so all sender threads are woken up in order to terminate.
+	pthread_mutex_lock(pSenderThreadQueueCondMutex);
+	if (pSenderThreadQueueCond != NULL) {
+		pthread_cond_broadcast(pSenderThreadQueueCond);
+	}
+	pthread_mutex_unlock(pSenderThreadQueueCondMutex);
+
+	return 0;
+}
+
+/**
+ * Main sender thread.
+ */
+static int sendMessages(retry_list_el list);
+static void *senderThreadMain(void *varg)
+{
+	senderThreadArg arg = (senderThreadArg) varg;
+	LM_DBG("Sender thread %d in rank %d started\n", arg->threadId, arg->rank);
+	size_t toPeek = MAX_PEEK_NUM;
+	size_t peekNum = 0;
+
+	// Work loop.
+	while(senderThreadsRunning){
+		retry_list_el elems = NULL;
+		int signaled = 0;
+
+		// Maximum wait time in condition wait is x seconds so we don't deadlock (soft deadlock).
+		struct timespec timeToWait;
+		struct timeval now;
+		gettimeofday(&now, NULL);
+		timeToWait.tv_sec = now.tv_sec + ((SENDER_THREAD_WAIT_MS) / 1000);
+		timeToWait.tv_nsec = (now.tv_usec+1000UL*((SENDER_THREAD_WAIT_MS) % 1000))*1000UL;
+
+		// <critical_section> monitor queue, poll one job from queue.
+		pthread_mutex_lock(pSenderThreadQueueCondMutex);
+		senderThreadWaiters += 1;
+		{
+			// If queue is empty, wait for insertion signal.
+			if (retry_is_empty(rl)) {
+				// Wait signaling, note mutex is atomically unlocked while waiting.
+				// CPU cycles are saved here since thread blocks while waiting for new jobs.
+				signaled = pthread_cond_timedwait(pSenderThreadQueueCond, pSenderThreadQueueCondMutex, &timeToWait);
+				senderThreadWaiters -= 1;
+			}
+
+			// Check job queue again.
+			elems = retry_peek_n(rl, toPeek, &peekNum);
+		}
+		pthread_mutex_unlock(pSenderThreadQueueCondMutex);
+		// </critical_section>
+
+		// If signaling ended with command to quit.
+		if (!senderThreadsRunning){
+			break;
+		}
+
+		// Job may be nil. If is, continue with waiting.
+		if (elems == NULL){
+			continue;
+		}
+
+		// Send messages.
+		LM_INFO("Going to dump %d messages", (int)peekNum);
+		sendMessages(elems);
+	}
+
+	LM_DBG("Sender thread %d in rank %d finished\n", arg->threadId, arg->rank);
+	return NULL;
+}
+
+static int buildSqlQuery(char * sql_query, str * sql_str, long * midsToLoad, size_t midsToLoadSize);
+static int sendMessages(retry_list_el list){
+	db_res_t* db_res = NULL;
+	int i, n;
+	char hdr_buf[1024];
+	char body_buf[1024];
+
+	char sql_query[PH_SQL_BUF_LEN];
+	str sql_str;
+
+	str str_vals[4], hdr_str , body_str;
+	time_t rtime;
+	time_t dumpId;
+
+	long midsInDb[MAX_PEEK_NUM];
+	size_t midsInDbSize = 0;
+
+	long midsToLoad[MAX_PEEK_NUM];
+	size_t midsToLoadSize = 0;
+
+	// Logic.
+	if (list == NULL){
+		LM_INFO("Message list is empty");
+		return -1;
+	}
+
+	// Check not before.
+	while(senderThreadsRunning) {
+		time_t send_time;
+		time(&send_time);
+		if (list->not_before > send_time) {
+			usleep(25l*1000l);
+		} else {
+			break;
+		}
+	}
+
+	// Load message with given MID from database.
+	// Raw query, unfortunately.
+	retry_list_el p0 = list;
+	while(p0){
+		midsToLoad[midsToLoadSize++] = p0->msgid;
+		p0 = p0->prev;
+	}
+
+	hdr_str.s=hdr_buf;
+	hdr_str.len=1024;
+	body_str.s=body_buf;
+	body_str.len=1024;
+
+	if (buildSqlQuery(sql_query, &sql_str, midsToLoad, midsToLoadSize) < 0){
+		LM_CRIT("Could not build sql string");
+		return -1;
+	}
+
+	LM_INFO("MySQL query string: %.*s", sql_str.len, sql_str.s);
+
+	time(&dumpId);
+	if (msilo_dbf.use_table(db_con, &ms_db_table) < 0)
+	{
+		LM_ERR("failed to use_table\n");
+		goto error;
+	}
+
+	if((msilo_dbf.raw_query(db_con, &sql_str, &db_res)!=0) || (RES_ROW_N(db_res) <= 0))
+	{
+		LM_DBG("no stored messages for size=%d!\n", (int)midsToLoadSize);
+		goto done;
+	}
+
+	LM_INFO("resend: dumping [%d] messages for size: %d\n",  RES_ROW_N(db_res), (int)midsToLoadSize);
+	for(i = 0; i < RES_ROW_N(db_res); i++)
+	{
+		retry_list_el p1 = list;
+
+		int mid = RES_ROWS(db_res)[i].values[0].val.int_val;
+		midsInDb[midsInDbSize++] = mid;
+
+		// Find this mid in the list.
+		while(p1){
+			if (p1->msgid == mid){
+				break;
+			}
+			p1 = p1->prev;
+		}
+
+		if (p1 == NULL){
+			LM_CRIT("Message loaded from DB not found in list: %d", mid);
+			continue;
+		}
+
+		memset(str_vals, 0, 4*sizeof(str));
+		SET_STR_VAL(str_vals[0], db_res, i, 1); /* from */
+		SET_STR_VAL(str_vals[1], db_res, i, 2); /* to */
+		SET_STR_VAL(str_vals[2], db_res, i, 3); /* body */
+		SET_STR_VAL(str_vals[3], db_res, i, 4); /* ctype */
+		rtime = (time_t)RES_ROWS(db_res)[i].values[5/*inc time*/].val.int_val;
+
+		hdr_str.len = 1024;
+		if(m_build_headers(&hdr_str, str_vals[3] /*ctype*/,
+						   str_vals[0]/*from*/, rtime /*Date*/, (long) (dumpId * 1000l)) < 0)
+		{
+			LM_ERR("resend: headers building failed [%d]\n", mid);
+			if (msilo_dbf.free_result(db_con, db_res) < 0)
+				LM_ERR("resend: failed to free the query result\n");
+			msg_list_set_flag(ml, mid, MS_MSG_ERRO);
+			goto error;
+		}
+
+		LM_DBG("resend: msg [%d-%d] for: %.*s\n", i+1, mid,	str_vals[1].len, str_vals[1].s);
+
+		/** sending using TM function: t_uac */
+		body_str.len = 1024;
+		n = m_build_body(&body_str, rtime, str_vals[2/*body*/], 0);
+		if(n<0)
+			LM_DBG("resend: sending simple body\n");
+		else
+			LM_DBG("resend: sending composed body\n");
+
+		int res = tmb.t_request(&msg_type,  /* Type of the message */
+								&str_vals[1],     /* Request-URI (To) */
+								&str_vals[1],     /* To */
+								&str_vals[0],     /* From */
+								&hdr_str,         /* Optional headers including CRLF */
+								(n<0)?&str_vals[2]:&body_str, /* Message body */
+								(ms_outbound_proxy.s)?&ms_outbound_proxy:0,
+				/* outbound uri */
+								m_tm_callback,    /* Callback function */
+								(void*)p1, /* Callback parameter */
+								NULL
+		);
+
+		if (res < 0){
+			LM_WARN("resend: message sending failed [%d], res=%d messages for <%.*s>!\n",
+					mid, res, str_vals[1].len, str_vals[1].s);
+		}
+	}
+
+done:
+	/**
+	 * Free the result because we don't need it
+	 * anymore
+	 */
+	if (db_res!=NULL && msilo_dbf.free_result(db_con, db_res) < 0)
+		LM_ERR("resend: failed to free result of query\n");
+
+	return 1;
+error:
+	return -1;
+
+}
+
+/**
+ * TM callback function - delete message from database if was sent OK
+ */
+void m_tm_callback( struct cell *t, int type, struct tmcb_params *ps)
+{
+	retry_list_el cur_elem = NULL;
+	if(ps->param==NULL)
+	{
+		LM_INFO("message id not received\n");
+		goto done;
+	}
+
+	cur_elem = *((retry_list_el*)ps->param);
+
+	LM_INFO("completed with status %d [mid: %d]\n", ps->code, cur_elem->msgid);
+	if(!db_con)
+	{
+		LM_ERR("db_con is NULL\n");
+		goto done;
+	}
+	if(ps->code >= 300)
+	{
+		int shouldResend = cur_elem->retry_ctr < ms_retry_count;
+		LM_INFO("message <%d> was not sent successfully, resendCtr: %d, shouldResend: %d\n",
+				cur_elem->msgid, cur_elem->retry_ctr, shouldResend);
+
+		if (shouldResend){
+			retry_add_element(rl, cur_elem->msgid, cur_elem->retry_ctr, 0);
+		}
+		goto done;
+	}
+
+	// By seting DONE cleaning thread will remove it from the list and from the database.
+	LM_INFO("message <%d> was sent successfully\n", cur_elem->msgid);
+	msg_list_set_flag(ml, *((int*)ps->param), MS_MSG_DONE);
+
+	done:
+	return;
+}
+
+static int buildSqlQuery(char * sql_query, str * sql_str, long * midsToLoad, size_t midsToLoadSize) {
+	int off = 0, ret = 0, i = 0;
+	ret = snprintf(sql_query, PH_SQL_BUF_LEN, "SELECT `%.*s`, `%.*s`, `%.*s`, `%.*s`, `%.*s`, `%.*s` FROM `%.*s` WHERE ",
+				   sc_mid.len, sc_mid.s,
+				   sc_from.len, sc_from.s,
+				   sc_to.len, sc_to.s,
+				   sc_body.len, sc_body.s,
+				   sc_ctype.len, sc_ctype.s,
+				   sc_inc_time.len, sc_inc_time.s,
+				   ms_db_table.len, ms_db_table.s);
+	if (ret < 0 || ret >= PH_SQL_BUF_LEN) goto error;
+	off = ret;
+
+	// WHERE conditions.
+	for(i = 0; i < midsToLoadSize; i++){
+		ret = snprintf(sql_query + off, PH_SQL_BUF_LEN - off, " `%.*s`=%d ", sc_mid.len, sc_mid.s, (int)midsToLoad[i]);
+		if (ret < 0 || ret >= (PH_SQL_BUF_LEN - off)) goto error;
+		off += ret;
+
+		if (i+1 < midsToLoadSize){
+			ret = snprintf(sql_query + off, PH_SQL_BUF_LEN - off, " OR ");
+			if (ret < 0 || ret >= (PH_SQL_BUF_LEN - off)) goto error;
+			off += ret;
+		}
+	}
+
+	ret = snprintf(sql_query + off, PH_SQL_BUF_LEN - off, " ORDER BY `%.*s`", sc_mid.len, sc_mid.s);
+	if (ret < 0 || ret >= (PH_SQL_BUF_LEN - off)) goto error;
+	off += ret;
+
+	// Null terminate.
+	if (off + 1 >= PH_SQL_BUF_LEN) goto error;
+	sql_query[off + 1] = '\0';
+	sql_str->s = sql_query;
+	sql_str->len = off;
+
+	return 0;
+error:
+	return -1;
+}
