@@ -269,65 +269,6 @@ errorx:
 }
 
 /**
- * returns 1 if message should be re-sent.
- * if current retry count < limit, 1 is returned, retry count is increased and state is set to sending.
- * otherwise provided flag is set and 0 is returned.
- */
-int msg_list_should_retry(msg_list ml, int mid, int limit, int * retryCnt, int fl)
-{
-	msg_list_el p0;
-	int shouldRetry = 0;
-	if(ml==0 || mid==0)
-	{
-		LM_ERR("bad param %p\n", ml);
-		goto errorx;
-	}
-
-	lock_get(&ml->sem_sent);
-
-	p0 = ml->lsent;
-	while(p0)
-	{
-		if(p0->msgid==mid)
-		{
-			if (retryCnt != NULL){
-				*retryCnt = p0->retryCtr;
-			}
-
-			if ((p0->flag & MS_MSG_DONE) > 0){
-				shouldRetry = 0;
-				LM_DBG("mid:%d fl:%d, done\n", p0->msgid, fl);
-				goto done;
-			}
-
-			if (p0->retryCtr < limit)
-			{
-				shouldRetry = 1;
-				p0->retryCtr += 1;
-				p0->flag |= MS_MSG_RETRY;
-				p0->flag &= ~MS_MSG_ERRO;
-			}
-			else
-			{
-				shouldRetry = 0;
-				p0->flag |= fl;
-				p0->flag &= ~MS_MSG_RETRY;
-			}
-
-			LM_DBG("mid:%d fl:%d\n", p0->msgid, fl);
-			goto done;
-		}
-		p0 = p0->next;
-	}
-
-done:
-	lock_release(&ml->sem_sent);
-	return shouldRetry;
-errorx:
-	return MSG_LIST_ERR;
-}
-
-/**
  * check if the messages from list were sent
  */
 int msg_list_check(msg_list ml)

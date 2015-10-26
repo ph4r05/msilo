@@ -82,7 +82,6 @@ msg_list msg_list_init();
 void msg_list_free(msg_list);
 int msg_list_check_msg(msg_list, int, int *, int *);
 int msg_list_set_flag(msg_list, int, int);
-int msg_list_should_retry(msg_list ml, int mid, int limit, int * retryCnt, int fl);
 int msg_list_check(msg_list);
 msg_list_el msg_list_reset(msg_list);
 
