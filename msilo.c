@@ -1474,7 +1474,7 @@ static void msg_process(int rank)
 	pid = my_pid();
 	*sender_pid = pid;
 
-	LM_DBG("started child message sender process, rank: %d\n", rank);
+	LM_INFO("started child message sender process, rank: %d\n", rank);
 	senderThreadsRunning = 1;
 
 	t_senderThreadArg arg;
@@ -1603,6 +1603,7 @@ static int terminateSenderThreads(void){
 	}
 
 	// Broadcast signal to check the queue so all sender threads are woken up in order to terminate.
+	LM_INFO("Terminating senders");
 	pthread_mutex_lock(pSenderThreadQueueCondMutex);
 	if (pSenderThreadQueueCond != NULL) {
 		pthread_cond_broadcast(pSenderThreadQueueCond);
@@ -1623,19 +1624,22 @@ static void signalNewTask(void){
 		return;
 	}
 
-	int rc = pthread_mutex_lock(pSenderThreadQueueCondMutex);
-	rc = pthread_cond_signal(pSenderThreadQueueCond);
-	rc = pthread_mutex_unlock(pSenderThreadQueueCondMutex);
+	// TODO: refactor to semaphore. Signal increments semaphore. Sender process resets to zero.
+	// Signal should be always signalled only if some thread is waiting.
+
+	//int rc = pthread_mutex_lock(pSenderThreadQueueCondMutex);
+	//rc = pthread_cond_signal(pSenderThreadQueueCond);
+	//rc = pthread_mutex_unlock(pSenderThreadQueueCondMutex);
 }
 
 /**
  * Main sender thread.
  */
-static int sendMessages(retry_list_el list);
+static int sendMessages(const retry_list_el list);
 static void *senderThreadMain(void *varg)
 {
 	senderThreadArg arg = (senderThreadArg) varg;
-	LM_DBG("Sender thread %d in rank %d started\n", arg->threadId, arg->rank);
+	LM_INFO("Sender thread %d in rank %d started\n", arg->threadId, arg->rank);
 	size_t toPeek = MAX_PEEK_NUM;
 	size_t peekNum = 0;
 
@@ -1684,12 +1688,12 @@ static void *senderThreadMain(void *varg)
 		sendMessages(elems);
 	}
 
-	LM_DBG("Sender thread %d in rank %d finished\n", arg->threadId, arg->rank);
+	LM_INFO("Sender thread %d in rank %d finished\n", arg->threadId, arg->rank);
 	return NULL;
 }
 
 static int buildSqlQuery(char * sql_query, str * sql_str, long * midsToLoad, size_t midsToLoadSize);
-static int sendMessages(retry_list_el list){
+static int sendMessages(const retry_list_el list){
 	db_res_t* db_res = NULL;
 	int i, n;
 	char hdr_buf[1024];
@@ -1728,9 +1732,14 @@ static int sendMessages(retry_list_el list){
 	// Load message with given MID from database.
 	// Raw query, unfortunately.
 	retry_list_el p0 = list;
-	while(p0){
+	while(p0 && midsToLoadSize < MAX_PEEK_NUM){
 		midsToLoad[midsToLoadSize++] = p0->msgid;
 		p0 = p0->prev;
+
+		if (midsToLoadSize >= MAX_PEEK_NUM && p0 != NULL){
+			LM_CRIT("List is not ended with prev=NULL");
+			break;
+		}
 	}
 
 	hdr_str.s=hdr_buf;
@@ -1763,6 +1772,7 @@ static int sendMessages(retry_list_el list){
 	{
 		retry_list_el p1 = list;
 
+		int findIter = 0;
 		int mid = RES_ROWS(db_res)[i].values[0].val.int_val;
 		midsInDb[midsInDbSize++] = mid;
 
@@ -1771,11 +1781,12 @@ static int sendMessages(retry_list_el list){
 			if (p1->msgid == mid){
 				break;
 			}
+			findIter += 1;
 			p1 = p1->prev;
 		}
 
 		if (p1 == NULL){
-			LM_CRIT("Message loaded from DB not found in list: %d", mid);
+			LM_CRIT("Message loaded from DB not found in list: <%d>, findIter: [%d]", mid, findIter);
 			continue;
 		}
 
@@ -1826,6 +1837,18 @@ static int sendMessages(retry_list_el list){
 		}
 	}
 
+	// Messages not found in the database are removed from retry queue
+	// since its record gets lost.
+
+	// Remove bounds.
+	p0 = list;
+	while(p0){
+		retry_list_el prev = p0->prev;
+		p0->next = NULL;
+		p0->prev = NULL;
+		p0 = prev;
+	}
+
 done:
 	/**
 	 * Free the result because we don't need it
@@ -1868,6 +1891,7 @@ void m_tm_callback( struct cell *t, int type, struct tmcb_params *ps)
 
 		if (shouldResend){
 			retry_add_element(rl, cur_elem->msgid, cur_elem->retry_ctr + 1, 0);
+			signalNewTask();
 		}
 		goto done;
 	}

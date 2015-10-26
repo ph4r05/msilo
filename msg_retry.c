@@ -198,6 +198,7 @@ retry_list_el retry_peek_n(retry_list ml, size_t n, size_t * size){
 
     // User iterates over prev pointers. First one is on the top.
     p_ret = ml->lretry_pop;
+    p_ret->next = NULL;
     *size = cur_ctr;
     ml->nrretry -= cur_ctr;
 
@@ -212,6 +213,9 @@ retry_list_el retry_peek_n(retry_list ml, size_t n, size_t * size){
             LM_CRIT("Num of nodes does not match: %d!", ml->nrretry);
         }
     }
+
+    LM_INFO("Items removed (peek): %d, remaining: %d, new: %p, pop: %p, ret: %p, p1: %p",
+            (int)cur_ctr, (int)ml->nrretry, ml->lretry_new, ml->lretry_pop, p_ret, p1);
 
     lock_release(&ml->sem_retry);
     return p_ret;
