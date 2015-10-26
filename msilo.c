@@ -145,7 +145,7 @@ void**  ms_offline_message_sp = NULL;
 
 int  ms_expire_time = 259200;
 int  ms_check_time = 60;
-int  ms_retry_count = 0;
+int  ms_retry_count = 2;
 int  ms_delay_sec = 5;
 int  ms_send_time = 0;
 int  ms_clean_period = 10;
