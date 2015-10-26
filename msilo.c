@@ -214,9 +214,11 @@ int pid = 0;
 static int msg_process_prefork(void);
 static int msg_process_postfork(void);
 static void msg_process(int rank);
-static int build_sql_query(char *sql_query, str *sql_str, long *mids_to_load, size_t mids_to_load_size);
+static int build_sql_query(char *sql_query, str *sql_str, int *mids_to_load, size_t mids_to_load_size);
 static int wait_not_before(time_t not_before);
-static int send_messages(const retry_list_el list);
+static int send_messages(retry_list_el list);
+static int msg_set_flags_all_list_prev(retry_list_el list, int flag);
+static int msg_set_flags_all(int *mids, size_t mids_size, int flag);
 
 static proc_export_t procs[] = {
 		// name, pre-fork, post-fork, function, number, flags
@@ -1620,7 +1622,9 @@ static void *sender_thread_main(void *varg)
 		// If signaling ended with command to quit.
 		if (!sender_threads_running)
 		{
+			msg_set_flags_all_list_prev(elems, MS_MSG_ERRO);
 			retry_list_el_free_prev_all(elems);
+			elems = NULL;
 			break;
 		}
 
@@ -1639,7 +1643,7 @@ static void *sender_thread_main(void *varg)
 	return NULL;
 }
 
-static int send_messages(const retry_list_el list){
+static int send_messages(retry_list_el list){
 	db_res_t* db_res = NULL;
 	int i, n;
 	char hdr_buf[MSG_HDR_BUFF_LEN];
@@ -1652,7 +1656,7 @@ static int send_messages(const retry_list_el list){
 	time_t rtime;
 	time_t dump_id;
 
-	long mids_to_load[MAX_PEEK_NUM];
+	int mids_to_load[MAX_PEEK_NUM];
 	size_t mids_to_load_size = 0;
 
 	// Logic.
@@ -1706,6 +1710,9 @@ static int send_messages(const retry_list_el list){
 	if((msilo_dbf.raw_query(db_con, &sql_str, &db_res)!=0) || (RES_ROW_N(db_res) <= 0))
 	{
 		LM_DBG("no stored messages for size=%d!\n", (int) mids_to_load_size);
+		msg_set_flags_all_list_prev(list, MS_MSG_ERRO);
+		retry_list_el_free_prev_all(list);
+		list = NULL;
 		goto done;
 	}
 
@@ -1813,6 +1820,7 @@ static int send_messages(const retry_list_el list){
 done:
 	// Remove cloned list.
 	retry_list_el_free_prev_all(list_cloned);
+	list_cloned = NULL;
 
 	/**
 	 * Free the result because we don't need it
@@ -1825,8 +1833,14 @@ done:
 
 	return 1;
 error:
+	// Set all messages in the list to error so they are re-sent in the next registration.
+	msg_set_flags_all_list_prev(list, MS_MSG_ERRO);
+
+	// On error cleanup memoy for all lists.
 	retry_list_el_free_prev_all(list);
 	retry_list_el_free_prev_all(list_cloned);
+	list = NULL;
+	list_cloned = NULL;
 	return -1;
 
 }
@@ -1857,10 +1871,16 @@ void m_tm_callback( struct cell *t, int type, struct tmcb_params *ps)
 		LM_INFO("message <%d> was not sent successfully, resendCtr: %d, should_resend: %d\n",
 				cur_elem->msgid, cur_elem->retry_ctr, should_resend);
 
-		if (should_resend){
+		if (should_resend)
+		{
 			retry_add_element(rl, cur_elem->msgid, cur_elem->retry_ctr + 1, 0);
 			signal_new_task();
 		}
+
+		// Free SHM memory.
+		retry_list_el_free(cur_elem);
+		cur_elem = NULL;
+
 		goto done;
 	}
 
@@ -1870,6 +1890,7 @@ void m_tm_callback( struct cell *t, int type, struct tmcb_params *ps)
 
 	// Free SHM memory.
 	retry_list_el_free(cur_elem);
+	cur_elem = NULL;
 
 	done:
 	return;
@@ -1879,7 +1900,7 @@ void m_tm_callback( struct cell *t, int type, struct tmcb_params *ps)
  * Builds SQL Query string sql_str, using sql_query buffer. Constructs SELECT query to load all
  * messages for sending with specified message ids.
  */
-static int build_sql_query(char *sql_query, str *sql_str, long *mids_to_load, size_t mids_to_load_size)
+static int build_sql_query(char *sql_query, str *sql_str, int *mids_to_load, size_t mids_to_load_size)
 {
 	int off = 0, ret = 0, i = 0;
 	ret = snprintf(sql_query, PH_SQL_BUF_LEN, "SELECT `%.*s`, `%.*s`, `%.*s`, `%.*s`, `%.*s`, `%.*s` FROM `%.*s` WHERE ",
@@ -1941,4 +1962,32 @@ static int wait_not_before(time_t not_before)
 	}
 
 	return 0;
+}
+
+static int msg_set_flags_all_list_prev(retry_list_el list, int flag)
+{
+	retry_list_el p0 = list;
+	while(p0)
+	{
+		msg_list_set_flag(ml, p0->msgid, flag);
+		p0 = p0->prev;
+	}
+
+	return 0;
+}
+
+static int msg_set_flags_all(int *mids, size_t mids_size, int flag)
+{
+	size_t i = 0;
+	if (mids == NULL || mids_size == 0)
+	{
+		return 0;
+	}
+
+	for(i = 0; i < mids_size; i ++)
+	{
+		msg_list_set_flag(ml, mids[i], flag);
+	}
+
+	return 1;
 }
