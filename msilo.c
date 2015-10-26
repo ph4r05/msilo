@@ -1874,7 +1874,7 @@ void m_tm_callback( struct cell *t, int type, struct tmcb_params *ps)
 
 	// By seting DONE cleaning thread will remove it from the list and from the database.
 	LM_INFO("message <%d> was sent successfully\n", cur_elem->msgid);
-	msg_list_set_flag(ml, *((int*)ps->param), MS_MSG_DONE);
+	msg_list_set_flag(ml, cur_elem->msgid, MS_MSG_DONE);
 
 	// Free SHM memory.
 	retry_list_el_free(cur_elem);
