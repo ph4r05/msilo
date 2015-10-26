@@ -1847,7 +1847,7 @@ void m_tm_callback( struct cell *t, int type, struct tmcb_params *ps)
 				cur_elem->msgid, cur_elem->retry_ctr, shouldResend);
 
 		if (shouldResend){
-			retry_add_element(rl, cur_elem->msgid, cur_elem->retry_ctr, 0);
+			retry_add_element(rl, cur_elem->msgid, cur_elem->retry_ctr + 1, 0);
 		}
 		goto done;
 	}
