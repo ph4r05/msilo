@@ -1856,6 +1856,9 @@ void m_tm_callback( struct cell *t, int type, struct tmcb_params *ps)
 	LM_INFO("message <%d> was sent successfully\n", cur_elem->msgid);
 	msg_list_set_flag(ml, *((int*)ps->param), MS_MSG_DONE);
 
+	// Free SHM memory.
+	retry_list_el_free(cur_elem);
+
 	done:
 	return;
 }
