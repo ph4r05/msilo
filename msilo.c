@@ -204,6 +204,7 @@ static int initChildSenderThreads(void);
 static int spawnSenderThreads(void);
 static int terminateSenderThreads(void);
 static void *senderThreadMain(void *varg);
+static void signalNewTask(void);
 
 // https://voipmagazine.wordpress.com/tag/extra-process/
 int* sender_pid;
@@ -1075,6 +1076,8 @@ static int m_dump(struct sip_msg* msg, char* owner, char* str2)
 //			}
 	}
 
+	signalNewTask();
+
 done:
 	/**
 	 * Free the result because we don't need it
@@ -1607,6 +1610,22 @@ static int terminateSenderThreads(void){
 	pthread_mutex_unlock(pSenderThreadQueueCondMutex);
 
 	return 0;
+}
+
+static void signalNewTask(void){
+	if (pSenderThreadQueueCondMutex == NULL){
+		LM_CRIT("Mutex is null");
+		return;
+	}
+
+	if (pSenderThreadQueueCond == NULL){
+		LM_CRIT("Condition variable is null");
+		return;
+	}
+
+	int rc = pthread_mutex_lock(pSenderThreadQueueCondMutex);
+	rc = pthread_cond_signal(pSenderThreadQueueCond);
+	rc = pthread_mutex_unlock(pSenderThreadQueueCondMutex);
 }
 
 /**
