@@ -146,6 +146,7 @@ void**  ms_offline_message_sp = NULL;
 int  ms_expire_time = 259200;
 int  ms_check_time = 60;
 int  ms_retry_count = 0;
+int  ms_delay_sec = 5;
 int  ms_send_time = 0;
 int  ms_clean_period = 10;
 int  ms_use_contact = 1;
@@ -245,6 +246,7 @@ static param_export_t params[]={
 	{ "expire_time",      INT_PARAM, &ms_expire_time          },
 	{ "check_time",       INT_PARAM, &ms_check_time           },
 	{ "retry_count",      INT_PARAM, &ms_retry_count          },
+	{ "delay_sec",        INT_PARAM, &ms_delay_sec            },
 	{ "send_time",        INT_PARAM, &ms_send_time            },
 	{ "clean_period",     INT_PARAM, &ms_clean_period         },
 	{ "use_contact",      INT_PARAM, &ms_use_contact          },
@@ -871,16 +873,12 @@ static int m_dump(struct sip_msg* msg, char* owner, char* str2)
 	db_key_t ob_key;
 	db_op_t  db_ops[3];
 	db_val_t db_vals[3];
-	db_key_t db_cols[6];
+	db_key_t db_cols[1];
 	db_res_t* db_res = NULL;
-	int i, db_no_cols = 6, db_no_keys = 3, mid; //n;
-//	static char hdr_buf[1024];
-//	static char body_buf[1024];
+	int i, db_no_cols = 1, db_no_keys = 3, mid;
 	struct sip_uri puri;
 	str owner_s;
 
-//	str str_vals[4], hdr_str , body_str;
-//	time_t rtime;
 	time_t dumpId;
 
 	/* init */
@@ -893,19 +891,8 @@ static int m_dump(struct sip_msg* msg, char* owner, char* str2)
 	db_ops[1]=OP_EQ;
 	db_ops[2]=OP_EQ;
 
+	// Select only message identifiers.
 	db_cols[0]=&sc_mid;
-	db_cols[1]=&sc_from;
-	db_cols[2]=&sc_to;
-	db_cols[3]=&sc_body;
-	db_cols[4]=&sc_ctype;
-	db_cols[5]=&sc_inc_time;
-
-
-	LM_DBG("------------ start ------------\n");
-//	hdr_str.s=hdr_buf;
-//	hdr_str.len=1024;
-//	body_str.s=body_buf;
-//	body_str.len=1024;
 
 	/* check for TO header */
 	if(msg->to==NULL && (parse_headers(msg, HDR_TO_F, 0)==-1
@@ -1026,54 +1013,7 @@ static int m_dump(struct sip_msg* msg, char* owner, char* str2)
 		}
 
 		// Add to the retry queue, signal to the executor.
-		retry_add_element(rl, mid, 0, dumpId + 3);
-
-//		memset(str_vals, 0, 4*sizeof(str));
-//		SET_STR_VAL(str_vals[0], db_res, i, 1); /* from */
-//		SET_STR_VAL(str_vals[1], db_res, i, 2); /* to */
-//		SET_STR_VAL(str_vals[2], db_res, i, 3); /* body */
-//		SET_STR_VAL(str_vals[3], db_res, i, 4); /* ctype */
-//		rtime =
-//			(time_t)RES_ROWS(db_res)[i].values[5/*inc time*/].val.int_val;
-//
-//		hdr_str.len = 1024;
-//		if(m_build_headers(&hdr_str, str_vals[3] /*ctype*/,
-//				str_vals[0]/*from*/, rtime /*Date*/, (long) (dumpId * 1000l)) < 0)
-//		{
-//			LM_ERR("headers building failed [%d]\n", mid);
-//			if (msilo_dbf.free_result(db_con, db_res) < 0)
-//				LM_ERR("failed to free the query result\n");
-//			msg_list_set_flag(ml, mid, MS_MSG_ERRO);
-//			goto error;
-//		}
-//
-//		LM_DBG("msg [%d-%d] for: %.*s\n", i+1, mid,	pto->uri.len, pto->uri.s);
-//
-//		/** sending using TM function: t_uac */
-//		body_str.len = 1024;
-//		n = m_build_body(&body_str, rtime, str_vals[2/*body*/], 0);
-//		if(n<0)
-//			LM_DBG("sending simple body\n");
-//		else
-//			LM_DBG("sending composed body\n");
-//
-//			int res = tmb.t_request(&msg_type,  /* Type of the message */
-//					&str_vals[1],     /* Request-URI (To) */
-//					&str_vals[1],     /* To */
-//					&str_vals[0],     /* From */
-//					&hdr_str,         /* Optional headers including CRLF */
-//					(n<0)?&str_vals[2]:&body_str, /* Message body */
-//					(ms_outbound_proxy.s)?&ms_outbound_proxy:0,
-//									/* outbound uri */
-//					m_tm_callback,    /* Callback function */
-//					(void*)(long)mid, /* Callback parameter */
-//					NULL
-//				);
-//
-//			if (res < 0){
-//				LM_WARN("message sending failed [%d], res=%d messages for <%.*s>!\n",
-//						mid, res, pto->uri.len, pto->uri.s);
-//			}
+		retry_add_element(rl, mid, 0, dumpId + ms_delay_sec);
 	}
 
 	signalNewTask();
