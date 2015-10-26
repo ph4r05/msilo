@@ -59,7 +59,7 @@ typedef struct _msg_list_el
 {
 	int msgid;
 	int flag;
-	int retryCtr; // Retry counter for failed message.
+	int retry_ctr; // Retry counter for failed message.
 	struct _msg_list_el * prev;
 	struct _msg_list_el * next;
 } t_msg_list_el, *msg_list_el;

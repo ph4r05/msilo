@@ -49,7 +49,7 @@ msg_list_el msg_list_el_new(void)
 	mle->next = NULL;
 	mle->prev = NULL;
 	mle->msgid = 0;
-	mle->retryCtr = 0;
+	mle->retry_ctr = 0;
 	mle->flag = MS_MSG_NULL;
 
 	return mle;
@@ -160,7 +160,7 @@ void msg_list_free(msg_list ml)
 /**
  * check if a message is in list
  */
-int msg_list_check_msg(msg_list ml, int mid, int * retryCnt, int * fl)
+int msg_list_check_msg(msg_list ml, int mid, int * retry_cnt, int * fl)
 {
 	msg_list_el p0, p1;
 
@@ -175,9 +175,9 @@ int msg_list_check_msg(msg_list ml, int mid, int * retryCnt, int * fl)
 	while(p0)
 	{
 		if(p0->msgid==mid) {
-			if (retryCnt != NULL)
+			if (retry_cnt != NULL)
 			{
-				*retryCnt = p0->retryCtr;
+				*retry_cnt = p0->retry_ctr;
 			}
 
 			if (fl != NULL)
@@ -200,9 +200,9 @@ int msg_list_check_msg(msg_list ml, int mid, int * retryCnt, int * fl)
 	p0->msgid = mid;
 	p0->flag |= MS_MSG_SENT;
 
-	if (retryCnt != NULL)
+	if (retry_cnt != NULL)
 	{
-		*retryCnt = p0->retryCtr;
+		*retry_cnt = p0->retry_ctr;
 	}
 
 	if (fl != NULL)
