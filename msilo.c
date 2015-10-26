@@ -76,6 +76,7 @@
 #define MAX_PEEK_NUM	10
 #define NR_KEYS			10
 #define PH_SQL_BUF_LEN 2048
+#define MSG_BODY_BUFF_LEN 2048
 
 static str sc_mid      = str_init("id");        /* 0 */
 static str sc_from     = str_init("src_addr");  /* 1 */
@@ -528,7 +529,7 @@ static int m_store(struct sip_msg* msg, char* owner, char* s2)
 
 	int nr_keys = 0, val, lexpire;
 	content_type_t ctype;
-#define MS_BUF1_SIZE	1024
+#define MS_BUF1_SIZE	MSG_BODY_BUFF_LEN
 	static char ms_buf1[MS_BUF1_SIZE];
 	int mime;
 	str notify_from;
@@ -1199,7 +1200,7 @@ void m_send_ontimer(unsigned int ticks, void *param)
 	int i, db_no_cols = 6, db_no_keys = 2, mid, n;
 	static char hdr_buf[1024];
 	static char uri_buf[1024];
-	static char body_buf[1024];
+	static char body_buf[MSG_BODY_BUFF_LEN];
 	str puri;
 	time_t ttime;
 
@@ -1231,7 +1232,7 @@ void m_send_ontimer(unsigned int ticks, void *param)
 	hdr_str.s=hdr_buf;
 	hdr_str.len=1024;
 	body_str.s=body_buf;
-	body_str.len=1024;
+	body_str.len=MSG_BODY_BUFF_LEN;
 
 	db_vals[0].type = DB_INT;
 	db_vals[0].nul = 0;
@@ -1295,7 +1296,7 @@ void m_send_ontimer(unsigned int ticks, void *param)
 		LM_DBG("msg [%d-%d] for: %.*s\n", i+1, mid,	puri.len, puri.s);
 
 		/** sending using TM function: t_uac */
-		body_str.len = 1024;
+		body_str.len = MSG_BODY_BUFF_LEN;
 		stime =
 			(time_t)RES_ROWS(db_res)[i].values[5/*snd time*/].val.int_val;
 		n = m_build_body(&body_str, 0, str_vals[2/*body*/], stime);
@@ -1673,7 +1674,7 @@ static int sendMessages(retry_list_el list){
 	db_res_t* db_res = NULL;
 	int i, n;
 	char hdr_buf[1024];
-	char body_buf[1024];
+	char body_buf[MSG_BODY_BUFF_LEN];
 
 	char sql_query[PH_SQL_BUF_LEN];
 	str sql_str;
@@ -1716,7 +1717,7 @@ static int sendMessages(retry_list_el list){
 	hdr_str.s=hdr_buf;
 	hdr_str.len=1024;
 	body_str.s=body_buf;
-	body_str.len=1024;
+	body_str.len=MSG_BODY_BUFF_LEN;
 
 	if (buildSqlQuery(sql_query, &sql_str, midsToLoad, midsToLoadSize) < 0){
 		LM_CRIT("Could not build sql string");
@@ -1780,7 +1781,7 @@ static int sendMessages(retry_list_el list){
 		LM_DBG("resend: msg [%d-%d] for: %.*s\n", i+1, mid,	str_vals[1].len, str_vals[1].s);
 
 		/** sending using TM function: t_uac */
-		body_str.len = 1024;
+		body_str.len = MSG_BODY_BUFF_LEN;
 		n = m_build_body(&body_str, rtime, str_vals[2/*body*/], 0);
 		if(n<0)
 			LM_DBG("resend: sending simple body\n");
