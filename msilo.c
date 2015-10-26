@@ -1731,13 +1731,15 @@ static int sendMessages(const retry_list_el list){
 
 	// Load message with given MID from database.
 	// Raw query, unfortunately.
-	retry_list_el p0 = list;
+	// Need to clone the list
+	retry_list_el list_cloned = retry_clone_elements_prev_local(list);
+	retry_list_el p0 = list_cloned;
 	while(p0 && midsToLoadSize < MAX_PEEK_NUM){
 		midsToLoad[midsToLoadSize++] = p0->msgid;
 		p0 = p0->prev;
 
 		if (midsToLoadSize >= MAX_PEEK_NUM && p0 != NULL){
-			LM_CRIT("List is not ended with prev=NULL");
+			LM_CRIT("List is not ended with prev=NULL, toLoad: %d, p: %p", (int)midsToLoadSize, p0);
 			break;
 		}
 	}
@@ -1770,7 +1772,7 @@ static int sendMessages(const retry_list_el list){
 	LM_INFO("resend: dumping [%d] messages for size: %d\n",  RES_ROW_N(db_res), (int)midsToLoadSize);
 	for(i = 0; i < RES_ROW_N(db_res); i++)
 	{
-		retry_list_el p1 = list;
+		retry_list_el p1 = list_cloned;
 
 		int findIter = 0;
 		int mid = RES_ROWS(db_res)[i].values[0].val.int_val;
@@ -1789,6 +1791,16 @@ static int sendMessages(const retry_list_el list){
 			LM_CRIT("Message loaded from DB not found in list: <%d>, findIter: [%d]", mid, findIter);
 			continue;
 		}
+
+		if (p1->clone == NULL){
+			LM_CRIT("Message loaded from DB has no cloned record <%d>, %p, findIter: [%d]", mid, p1, findIter);
+			continue;
+		}
+
+		// Remove bounds for original
+		p1->clone->next = NULL;
+		p1->clone->prev = NULL;
+		p1->clone->clone = NULL;
 
 		memset(str_vals, 0, 4*sizeof(str));
 		SET_STR_VAL(str_vals[0], db_res, i, 1); /* from */
@@ -1827,7 +1839,7 @@ static int sendMessages(const retry_list_el list){
 								(ms_outbound_proxy.s)?&ms_outbound_proxy:0,
 				/* outbound uri */
 								m_tm_callback,    /* Callback function */
-								(void*)p1, /* Callback parameter */
+								(void*)p1->clone, /* Callback parameter */
 								NULL
 		);
 
@@ -1840,14 +1852,8 @@ static int sendMessages(const retry_list_el list){
 	// Messages not found in the database are removed from retry queue
 	// since its record gets lost.
 
-	// Remove bounds.
-	p0 = list;
-	while(p0){
-		retry_list_el prev = p0->prev;
-		p0->next = NULL;
-		p0->prev = NULL;
-		p0 = prev;
-	}
+	// Remove cloned list.
+	retry_list_el_free_prev_all(list_cloned);
 
 done:
 	/**

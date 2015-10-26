@@ -241,6 +241,74 @@ errorx:
     return ret;
 }
 
+void retry_clone_element(const retry_list_el src, retry_list_el dst){
+    if (src == NULL || dst == NULL){
+        LM_CRIT("Source or destination is NULL");
+        return;
+    }
+
+    dst->msgid = src->msgid;
+    dst->flag = src->flag;
+    dst->not_before = src->not_before;
+    dst->retry_ctr = src->retry_ctr;
+    dst->clone = src;
+    dst->prev = NULL;
+    dst->next = NULL;
+}
+
+/**
+ * Clones list for internal usage, temporary, local.
+ */
+retry_list_el retry_clone_elements_prev_local(retry_list_el p0) {
+    retry_list_el p0_clone = NULL, p1 = NULL, p_clone = NULL;
+    if (p0 == NULL){
+        return NULL;
+    }
+
+    p0_clone = retry_list_el_new();
+    retry_clone_element(p0, p0_clone);
+
+    p1 = p0->prev;
+    p_clone = p0_clone;
+    while(p1){
+        // Clone p1
+        retry_list_el p1_clone = retry_list_el_new();
+        retry_clone_element(p1, p1_clone);
+
+        // Connect to the chain
+        p1_clone->next = p_clone;
+        if (p_clone) {
+            p_clone->prev = p1_clone;
+        }
+
+        // Advance
+        p_clone = p1_clone;
+        p1 = p1->prev;
+    }
+
+    p_clone->prev = NULL;
+    return p0_clone;
+}
+
+/**
+ * free a list of elements
+ */
+void retry_list_el_free_prev_all(retry_list_el mle)
+{
+    retry_list_el p0, p1;
+
+    if(!mle)
+        return;
+
+    p0 = mle;
+    while(p0)
+    {
+        p1 = p0;
+        p0 = p0->prev;
+        retry_list_el_free(p1);
+    }
+}
+
 /**
  * reset a list
  * return old list

@@ -38,6 +38,7 @@ typedef struct _retry_list_el
     int retry_ctr;
     time_t not_before;
 
+    struct _retry_list_el * clone;
     struct _retry_list_el * prev;
     struct _retry_list_el * next;
 } t_retry_list_el, *retry_list_el;
@@ -60,6 +61,10 @@ int retry_add_element(retry_list ml, int mid, int retry_ctr, time_t not_before);
 retry_list_el retry_peek_n(retry_list ml, size_t n, size_t * size);
 int retry_is_empty(retry_list ml);
 retry_list_el retry_list_reset(retry_list ml);
+
+void retry_list_el_free_prev_all(retry_list_el mle);
+void retry_clone_element(const retry_list_el src, retry_list_el dst);
+retry_list_el retry_clone_elements_prev_local(retry_list_el p0);
 
 //int retry_list_set_flag(retry_list, int, int);
 //int retry_list_should_retry(retry_list ml, int mid, int limit, int * retryCnt, int fl);
