@@ -77,6 +77,7 @@
 #define NR_KEYS			10
 #define PH_SQL_BUF_LEN 2048
 #define MSG_BODY_BUFF_LEN 2048
+#define MSG_HDR_BUFF_LEN 1024
 
 static str sc_mid      = str_init("id");        /* 0 */
 static str sc_from     = str_init("src_addr");  /* 1 */
@@ -182,30 +183,30 @@ static void m_tm_callback( struct cell *t, int type, struct tmcb_params *ps);
 /** Sender thread */
 #define SENDER_THREAD_NUM 1
 #define SENDER_THREAD_WAIT_MS 100
-static volatile int senderThreadsRunning;
-static int senderThreadWaiters;
+static volatile int sender_threads_running;
+static int sender_thread_waiters;
 
-pthread_mutex_t * pSenderThreadQueueCondMutex = NULL;
-pthread_mutexattr_t senderThreadQueueCondMutexAttr;
+pthread_mutex_t * p_sender_thread_queue_cond_mutex = NULL;
+pthread_mutexattr_t sender_thread_queue_cond_mutex_attr;
 
-pthread_cond_t * pSenderThreadQueueCond = NULL;
-pthread_condattr_t senderThreadQueueCondAttr;
+pthread_cond_t * p_sender_thread_queue_cond = NULL;
+pthread_condattr_t sender_thread_queue_cond_attr;
 
 typedef struct t_senderThreadArg_ {
-	int threadId;
+	int thread_id;
 	int rank;
 
-} t_senderThreadArg, *senderThreadArg;
-t_senderThreadArg senderThreadsArgs[SENDER_THREAD_NUM];
-pthread_t senderThreads[SENDER_THREAD_NUM];
+} t_senderThreadArg, *t_sender_thread_arg;
+t_senderThreadArg sender_threads_args[SENDER_THREAD_NUM];
+pthread_t sender_threads[SENDER_THREAD_NUM];
 
-static int initSenderThreads(void);
-static int destroySenderThreads(void);
-static int initChildSenderThreads(void);
-static int spawnSenderThreads(void);
-static int terminateSenderThreads(void);
-static void *senderThreadMain(void *varg);
-static void signalNewTask(void);
+static int init_sender_worker_env(void);
+static int destroy_sender_worker_env(void);
+static int init_child_sender_threads(void);
+static int spawn_sender_threads(void);
+static int terminate_sender_threads(void);
+static void *sender_thread_main(void *varg);
+static void signal_new_task(void);
 
 // https://voipmagazine.wordpress.com/tag/extra-process/
 int* sender_pid;
@@ -213,6 +214,9 @@ int pid = 0;
 static int msg_process_prefork(void);
 static int msg_process_postfork(void);
 static void msg_process(int rank);
+static int build_sql_query(char *sql_query, str *sql_str, long *mids_to_load, size_t mids_to_load_size);
+static int wait_not_before(time_t not_before);
+static int send_messages(const retry_list_el list);
 
 static proc_export_t procs[] = {
 		// name, pre-fork, post-fork, function, number, flags
@@ -476,7 +480,7 @@ static int mod_init(void)
 		ms_outbound_proxy.len = strlen(ms_outbound_proxy.s);
 
 	// Sender thread startup.
-	return initSenderThreads() == 0 ? 0 : -1;
+	return init_sender_worker_env() == 0 ? 0 : -1;
 }
 
 /**
@@ -509,7 +513,7 @@ static int child_init(int rank)
 	return 0;
 
 	// Sender threads.
-	//return initChildSenderThreads() == 0 ? 0 : -1;
+	//return init_child_sender_threads() == 0 ? 0 : -1;
 }
 
 /**
@@ -1016,7 +1020,7 @@ static int m_dump(struct sip_msg* msg, char* owner, char* str2)
 		retry_add_element(rl, mid, 0, dumpId + ms_delay_sec);
 	}
 
-	signalNewTask();
+	signal_new_task();
 
 done:
 	/**
@@ -1124,7 +1128,7 @@ void m_clean_silo(unsigned int ticks, void *param)
 void destroy(void)
 {
 	LM_DBG("msilo destroy module ...\n");
-	destroySenderThreads();
+	destroy_sender_worker_env();
 
 	msg_list_free(ml);
 	retry_list_free(rl);
@@ -1141,7 +1145,7 @@ void m_send_ontimer(unsigned int ticks, void *param)
 	db_key_t db_cols[6];
 	db_res_t* db_res = NULL;
 	int i, db_no_cols = 6, db_no_keys = 2, mid, n;
-	static char hdr_buf[1024];
+	static char hdr_buf[MSG_HDR_BUFF_LEN];
 	static char uri_buf[1024];
 	static char body_buf[MSG_BODY_BUFF_LEN];
 	str puri;
@@ -1173,7 +1177,7 @@ void m_send_ontimer(unsigned int ticks, void *param)
 
 	LM_DBG("------------ start ------------\n");
 	hdr_str.s=hdr_buf;
-	hdr_str.len=1024;
+	hdr_str.len=MSG_HDR_BUFF_LEN;
 	body_str.s=body_buf;
 	body_str.len=MSG_BODY_BUFF_LEN;
 
@@ -1218,7 +1222,7 @@ void m_send_ontimer(unsigned int ticks, void *param)
 		SET_STR_VAL(str_vals[2], db_res, i, 3); /* body */
 		SET_STR_VAL(str_vals[3], db_res, i, 4); /* ctype */
 
-		hdr_str.len = 1024;
+		hdr_str.len = MSG_HDR_BUFF_LEN;
 		if(m_build_headers(&hdr_str, str_vals[3] /*ctype*/,
 				ms_reminder/*from*/,0/*Date*/, (long) (dumpId * 1000l)) < 0)
 		{
@@ -1415,20 +1419,20 @@ static void msg_process(int rank)
 	*sender_pid = pid;
 
 	LM_INFO("started child message sender process, rank: %d\n", rank);
-	senderThreadsRunning = 1;
+	sender_threads_running = 1;
 
 	t_senderThreadArg arg;
 	arg.rank = rank;
-	arg.threadId = 0;
-	senderThreadMain(&arg);
+	arg.thread_id = 0;
+	sender_thread_main(&arg);
 }
 
 /**
  * Called when server starts so shared variables for all processes are allocated and initialized.
  */
-static int initSenderThreads(void){
-	senderThreadsRunning = 1;
-	senderThreadWaiters = 0;
+static int init_sender_worker_env(void){
+	sender_threads_running = 1;
+	sender_thread_waiters = 0;
 
 	sender_pid = (int*)shm_malloc(sizeof(int));
 	if(sender_pid == NULL) {
@@ -1437,32 +1441,32 @@ static int initSenderThreads(void){
 	}
 
 	/* Initialise attribute to mutex. */
-	pthread_mutexattr_init(&senderThreadQueueCondMutexAttr);
-	pthread_mutexattr_setpshared(&senderThreadQueueCondMutexAttr, PTHREAD_PROCESS_SHARED);
+	pthread_mutexattr_init(&sender_thread_queue_cond_mutex_attr);
+	pthread_mutexattr_setpshared(&sender_thread_queue_cond_mutex_attr, PTHREAD_PROCESS_SHARED);
 
 	/* Allocate memory to pmutex here. */
-	pSenderThreadQueueCondMutex = (pthread_mutex_t *)shm_malloc(sizeof(pthread_mutex_t));
-	if (pSenderThreadQueueCondMutex == NULL){
+	p_sender_thread_queue_cond_mutex = (pthread_mutex_t *)shm_malloc(sizeof(pthread_mutex_t));
+	if (p_sender_thread_queue_cond_mutex == NULL){
 		LM_CRIT("Could not allocate memory for mutex");
 		return -1;
 	}
 
 	/* Initialise mutex. */
-	pthread_mutex_init(pSenderThreadQueueCondMutex, &senderThreadQueueCondMutexAttr);
+	pthread_mutex_init(p_sender_thread_queue_cond_mutex, &sender_thread_queue_cond_mutex_attr);
 
 	/* Initialise attribute to condition. */
-	pthread_condattr_init(&senderThreadQueueCondAttr);
-	pthread_condattr_setpshared(&senderThreadQueueCondAttr, PTHREAD_PROCESS_SHARED);
+	pthread_condattr_init(&sender_thread_queue_cond_attr);
+	pthread_condattr_setpshared(&sender_thread_queue_cond_attr, PTHREAD_PROCESS_SHARED);
 
 	/* Allocate memory to pcond here. */
-	pSenderThreadQueueCond = (pthread_cond_t *)shm_malloc(sizeof(pthread_cond_t));
-	if (pSenderThreadQueueCond == NULL){
+	p_sender_thread_queue_cond = (pthread_cond_t *)shm_malloc(sizeof(pthread_cond_t));
+	if (p_sender_thread_queue_cond == NULL){
 		LM_CRIT("Could not allocate memory for cond variable");
 		return -1;
 	}
 
 	/* Initialise condition. */
-	pthread_cond_init(pSenderThreadQueueCond, &senderThreadQueueCondAttr);
+	pthread_cond_init(p_sender_thread_queue_cond, &sender_thread_queue_cond_attr);
 
 	return 0;
 }
@@ -1470,27 +1474,27 @@ static int initSenderThreads(void){
 /**
  * Terminates running sender threads.
  */
-static int destroySenderThreads(void){
-	terminateSenderThreads();
+static int destroy_sender_worker_env(void){
+	terminate_sender_threads();
 	// TODO: wait for termination so mutex & conditions are not destroyed before memory release.
 	sleep(1);
 
 	// Clean up.
-	if (pSenderThreadQueueCondMutex != NULL) {
-		pthread_mutex_destroy(pSenderThreadQueueCondMutex);
-		shm_free(pSenderThreadQueueCondMutex);
-		pSenderThreadQueueCondMutex = NULL;
+	if (p_sender_thread_queue_cond_mutex != NULL) {
+		pthread_mutex_destroy(p_sender_thread_queue_cond_mutex);
+		shm_free(p_sender_thread_queue_cond_mutex);
+		p_sender_thread_queue_cond_mutex = NULL;
 	}
 
-	pthread_mutexattr_destroy(&senderThreadQueueCondMutexAttr);
+	pthread_mutexattr_destroy(&sender_thread_queue_cond_mutex_attr);
 
-	if (pSenderThreadQueueCond != NULL) {
-		pthread_cond_destroy(pSenderThreadQueueCond);
-		shm_free(pSenderThreadQueueCond);
-		pSenderThreadQueueCond = NULL;
+	if (p_sender_thread_queue_cond != NULL) {
+		pthread_cond_destroy(p_sender_thread_queue_cond);
+		shm_free(p_sender_thread_queue_cond);
+		p_sender_thread_queue_cond = NULL;
 	}
 
-	pthread_condattr_destroy(&senderThreadQueueCondAttr);
+	pthread_condattr_destroy(&sender_thread_queue_cond_attr);
 
 	if (sender_pid != NULL){
 		shm_free(sender_pid);
@@ -1503,20 +1507,20 @@ static int destroySenderThreads(void){
 /**
  * Called when worker process is initialized. Spawns sender threads.
  */
-static int initChildSenderThreads(void){
-	return spawnSenderThreads();
+static int init_child_sender_threads(void){
+	return spawn_sender_threads();
 }
 
 /**
  * Routine starts given amount of sender threads.
  */
-static int spawnSenderThreads(void){
+static int spawn_sender_threads(void){
 	int t = 0;
 	int rc = 0;
-	senderThreadsRunning = 1;
+	sender_threads_running = 1;
 
 	for(t = 0; t < SENDER_THREAD_NUM; t++){
-		rc = pthread_create(&senderThreads[t], NULL, senderThreadMain, (void *)&senderThreadsArgs[t]);
+		rc = pthread_create(&sender_threads[t], NULL, sender_thread_main, (void *) &sender_threads_args[t]);
 		if (rc){
 			LM_ERR("ERROR; return code from pthread_create() is %d\n", rc);
 			break;
@@ -1525,7 +1529,7 @@ static int spawnSenderThreads(void){
 
 	// Check for fails.
 	if (rc){
-		terminateSenderThreads();
+		terminate_sender_threads();
 		return -1;
 	}
 
@@ -1535,31 +1539,31 @@ static int spawnSenderThreads(void){
 /**
  * Sets all sender threads to terminate.
  */
-static int terminateSenderThreads(void){
+static int terminate_sender_threads(void){
 	// Running flag set to false.
-	senderThreadsRunning = 0;
-	if (pSenderThreadQueueCondMutex == NULL || pSenderThreadQueueCond == NULL){
+	sender_threads_running = 0;
+	if (p_sender_thread_queue_cond_mutex == NULL || p_sender_thread_queue_cond == NULL){
 		return -1;
 	}
 
 	// Broadcast signal to check the queue so all sender threads are woken up in order to terminate.
 	LM_INFO("Terminating senders");
-	pthread_mutex_lock(pSenderThreadQueueCondMutex);
-	if (pSenderThreadQueueCond != NULL) {
-		pthread_cond_broadcast(pSenderThreadQueueCond);
+	pthread_mutex_lock(p_sender_thread_queue_cond_mutex);
+	if (p_sender_thread_queue_cond != NULL) {
+		pthread_cond_broadcast(p_sender_thread_queue_cond);
 	}
-	pthread_mutex_unlock(pSenderThreadQueueCondMutex);
+	pthread_mutex_unlock(p_sender_thread_queue_cond_mutex);
 
 	return 0;
 }
 
-static void signalNewTask(void){
-	if (pSenderThreadQueueCondMutex == NULL){
+static void signal_new_task(void){
+	if (p_sender_thread_queue_cond_mutex == NULL){
 		LM_CRIT("Mutex is null");
 		return;
 	}
 
-	if (pSenderThreadQueueCond == NULL){
+	if (p_sender_thread_queue_cond == NULL){
 		LM_CRIT("Condition variable is null");
 		return;
 	}
@@ -1567,76 +1571,78 @@ static void signalNewTask(void){
 	// TODO: refactor to semaphore. Signal increments semaphore. Sender process resets to zero.
 	// Signal should be always signalled only if some thread is waiting.
 
-	//int rc = pthread_mutex_lock(pSenderThreadQueueCondMutex);
-	//rc = pthread_cond_signal(pSenderThreadQueueCond);
-	//rc = pthread_mutex_unlock(pSenderThreadQueueCondMutex);
+	//int rc = pthread_mutex_lock(p_sender_thread_queue_cond_mutex);
+	//rc = pthread_cond_signal(p_sender_thread_queue_cond);
+	//rc = pthread_mutex_unlock(p_sender_thread_queue_cond_mutex);
 }
 
 /**
  * Main sender thread.
  */
-static int sendMessages(const retry_list_el list);
-static void *senderThreadMain(void *varg)
+static void *sender_thread_main(void *varg)
 {
-	senderThreadArg arg = (senderThreadArg) varg;
-	LM_INFO("Sender thread %d in rank %d started\n", arg->threadId, arg->rank);
-	size_t toPeek = MAX_PEEK_NUM;
-	size_t peekNum = 0;
+	t_sender_thread_arg arg = (t_sender_thread_arg) varg;
+	LM_INFO("Sender thread %d in rank %d started\n", arg->thread_id, arg->rank);
+	size_t to_peek = MAX_PEEK_NUM;
+	size_t peek_num = 0;
 
 	// Work loop.
-	while(senderThreadsRunning){
+	while(sender_threads_running){
 		retry_list_el elems = NULL;
 		int signaled = 0;
 
 		// Maximum wait time in condition wait is x seconds so we don't deadlock (soft deadlock).
-		struct timespec timeToWait;
+		struct timespec time_to_wait;
 		struct timeval now;
 		gettimeofday(&now, NULL);
-		timeToWait.tv_sec = now.tv_sec + ((SENDER_THREAD_WAIT_MS) / 1000);
-		timeToWait.tv_nsec = (now.tv_usec+1000UL*((SENDER_THREAD_WAIT_MS) % 1000))*1000UL;
+		time_to_wait.tv_sec = now.tv_sec + ((SENDER_THREAD_WAIT_MS) / 1000);
+		time_to_wait.tv_nsec = (now.tv_usec+1000UL*((SENDER_THREAD_WAIT_MS) % 1000))*1000UL;
 
 		// <critical_section> monitor queue, poll one job from queue.
-		pthread_mutex_lock(pSenderThreadQueueCondMutex);
-		senderThreadWaiters += 1;
+		pthread_mutex_lock(p_sender_thread_queue_cond_mutex);
+		sender_thread_waiters += 1;
 		{
 			// If queue is empty, wait for insertion signal.
-			if (retry_is_empty(rl)) {
+			if (retry_is_empty(rl))
+			{
 				// Wait signaling, note mutex is atomically unlocked while waiting.
 				// CPU cycles are saved here since thread blocks while waiting for new jobs.
-				signaled = pthread_cond_timedwait(pSenderThreadQueueCond, pSenderThreadQueueCondMutex, &timeToWait);
-				senderThreadWaiters -= 1;
+				signaled = pthread_cond_timedwait(p_sender_thread_queue_cond, p_sender_thread_queue_cond_mutex, &time_to_wait);
+				sender_thread_waiters -= 1;
 			}
 
-			// Check job queue again.
-			elems = retry_peek_n(rl, toPeek, &peekNum);
+			// Remove given amount of elements from the retry queue atomically.
+			elems = retry_peek_n(rl, to_peek, &peek_num);
 		}
-		pthread_mutex_unlock(pSenderThreadQueueCondMutex);
+		pthread_mutex_unlock(p_sender_thread_queue_cond_mutex);
 		// </critical_section>
 
 		// If signaling ended with command to quit.
-		if (!senderThreadsRunning){
+		if (!sender_threads_running)
+		{
+			retry_list_el_free_prev_all(elems);
 			break;
 		}
 
-		// Job may be nil. If is, continue with waiting.
-		if (elems == NULL){
+		// List to process may be empty. If is, continue with waiting.
+		if (elems == NULL)
+		{
 			continue;
 		}
 
 		// Send messages.
-		LM_INFO("Going to dump %d messages", (int)peekNum);
-		sendMessages(elems);
+		LM_INFO("Going to dump %d messages", (int) peek_num);
+		send_messages(elems);
 	}
 
-	LM_INFO("Sender thread %d in rank %d finished\n", arg->threadId, arg->rank);
+	LM_INFO("Sender thread %d in rank %d finished\n", arg->thread_id, arg->rank);
 	return NULL;
 }
 
-static int buildSqlQuery(char * sql_query, str * sql_str, long * midsToLoad, size_t midsToLoadSize);
-static int sendMessages(const retry_list_el list){
+static int send_messages(const retry_list_el list){
 	db_res_t* db_res = NULL;
 	int i, n;
-	char hdr_buf[1024];
+	char hdr_buf[MSG_HDR_BUFF_LEN];
 	char body_buf[MSG_BODY_BUFF_LEN];
 
 	char sql_query[PH_SQL_BUF_LEN];
@@ -1644,13 +1650,10 @@ static int sendMessages(const retry_list_el list){
 
 	str str_vals[4], hdr_str , body_str;
 	time_t rtime;
-	time_t dumpId;
+	time_t dump_id;
 
-	long midsInDb[MAX_PEEK_NUM];
-	size_t midsInDbSize = 0;
-
-	long midsToLoad[MAX_PEEK_NUM];
-	size_t midsToLoadSize = 0;
+	long mids_to_load[MAX_PEEK_NUM];
+	size_t mids_to_load_size = 0;
 
 	// Logic.
 	if (list == NULL){
@@ -1658,45 +1661,42 @@ static int sendMessages(const retry_list_el list){
 		return -1;
 	}
 
-	// Check not before.
-	while(senderThreadsRunning) {
-		time_t send_time;
-		time(&send_time);
-		if (list->not_before > send_time) {
-			usleep(25l*1000l);
-		} else {
-			break;
-		}
-	}
+	// Waiting for not-before time of the first message.
+	// Usually the first message determines the waiting time for the whole bunch.
+	// It is better to wait here than during SQL result set processing for each message
+	// since no SQL-related resources are blocked.
+	wait_not_before(list->not_before);
 
 	// Load message with given MID from database.
-	// Raw query, unfortunately.
-	// Need to clone the list
+	// Need to clone the list as the original list may got deallocated by tx_callbacks
+	// When message transaction finishes.
 	retry_list_el list_cloned = retry_clone_elements_prev_local(list);
 	retry_list_el p0 = list_cloned;
-	while(p0 && midsToLoadSize < MAX_PEEK_NUM){
-		midsToLoad[midsToLoadSize++] = p0->msgid;
+	while(p0 && mids_to_load_size < MAX_PEEK_NUM)
+	{
+		mids_to_load[mids_to_load_size++] = p0->msgid;
 		p0 = p0->prev;
 
-		if (midsToLoadSize >= MAX_PEEK_NUM && p0 != NULL){
-			LM_CRIT("List is not ended with prev=NULL, toLoad: %d, p: %p", (int)midsToLoadSize, p0);
+		// Invariant faikure detection. peek() on retry list should be always terminated on both ends by NULLs.
+		if (mids_to_load_size >= MAX_PEEK_NUM && p0 != NULL)
+		{
+			LM_CRIT("List is not ended with prev=NULL, toLoad: %d, p: %p", (int) mids_to_load_size, p0);
 			break;
 		}
 	}
 
 	hdr_str.s=hdr_buf;
-	hdr_str.len=1024;
+	hdr_str.len=MSG_HDR_BUFF_LEN;
 	body_str.s=body_buf;
 	body_str.len=MSG_BODY_BUFF_LEN;
 
-	if (buildSqlQuery(sql_query, &sql_str, midsToLoad, midsToLoadSize) < 0){
+	if (build_sql_query(sql_query, &sql_str, mids_to_load, mids_to_load_size) < 0)
+	{
 		LM_CRIT("Could not build sql string");
-		return -1;
+		goto error;
 	}
 
-	LM_INFO("MySQL query string: %.*s", sql_str.len, sql_str.s);
-
-	time(&dumpId);
+	time(&dump_id);
 	if (msilo_dbf.use_table(db_con, &ms_db_table) < 0)
 	{
 		LM_ERR("failed to use_table\n");
@@ -1705,37 +1705,47 @@ static int sendMessages(const retry_list_el list){
 
 	if((msilo_dbf.raw_query(db_con, &sql_str, &db_res)!=0) || (RES_ROW_N(db_res) <= 0))
 	{
-		LM_DBG("no stored messages for size=%d!\n", (int)midsToLoadSize);
+		LM_DBG("no stored messages for size=%d!\n", (int) mids_to_load_size);
 		goto done;
 	}
 
-	LM_INFO("resend: dumping [%d] messages for size: %d\n",  RES_ROW_N(db_res), (int)midsToLoadSize);
+	LM_INFO("resend: dumping [%d] messages for size: %d\n",  RES_ROW_N(db_res), (int) mids_to_load_size);
 	for(i = 0; i < RES_ROW_N(db_res); i++)
 	{
 		retry_list_el p1 = list_cloned;
 
-		int findIter = 0;
-		int mid = RES_ROWS(db_res)[i].values[0].val.int_val;
-		midsInDb[midsInDbSize++] = mid;
+		int find_iter = 0;
+		const int mid = RES_ROWS(db_res)[i].values[0].val.int_val;
 
 		// Find this mid in the list.
-		while(p1){
-			if (p1->msgid == mid){
+		while(p1)
+		{
+			if (p1->msgid == mid)
+			{
 				break;
 			}
-			findIter += 1;
+			find_iter += 1;
 			p1 = p1->prev;
 		}
 
-		if (p1 == NULL){
-			LM_CRIT("Message loaded from DB not found in list: <%d>, findIter: [%d]", mid, findIter);
+		// This happened prior list cloning approach as tx_callback released list nodes while
+		// this loop was processing data. Cloning is neccessary though.
+		if (p1 == NULL)
+		{
+			LM_CRIT("Message loaded from DB not found in list: <%d>, find_iter: [%d]", mid, find_iter);
+			msg_list_set_flag(ml, mid, MS_MSG_ERRO);
 			continue;
 		}
 
-		if (p1->clone == NULL){
-			LM_CRIT("Message loaded from DB has no cloned record <%d>, %p, findIter: [%d]", mid, p1, findIter);
+		if (p1->clone == NULL)
+		{
+			LM_CRIT("Message loaded from DB has no cloned record <%d>, %p, find_iter: [%d]", mid, p1, find_iter);
+			msg_list_set_flag(ml, mid, MS_MSG_ERRO);
 			continue;
 		}
+
+		// Waiting for not-before so message is sent no earlier than necessary / required.
+		wait_not_before(p1->not_before);
 
 		// Remove bounds for original
 		p1->clone->next = NULL;
@@ -1749,15 +1759,18 @@ static int sendMessages(const retry_list_el list){
 		SET_STR_VAL(str_vals[3], db_res, i, 4); /* ctype */
 		rtime = (time_t)RES_ROWS(db_res)[i].values[5/*inc time*/].val.int_val;
 
-		hdr_str.len = 1024;
+		hdr_str.len = MSG_HDR_BUFF_LEN;
 		if(m_build_headers(&hdr_str, str_vals[3] /*ctype*/,
-						   str_vals[0]/*from*/, rtime /*Date*/, (long) (dumpId * 1000l)) < 0)
+						   str_vals[0]/*from*/, rtime /*Date*/, (long) (dump_id * 1000l)) < 0)
 		{
 			LM_ERR("resend: headers building failed [%d]\n", mid);
 			if (msilo_dbf.free_result(db_con, db_res) < 0)
+			{
 				LM_ERR("resend: failed to free the query result\n");
+			}
+
 			msg_list_set_flag(ml, mid, MS_MSG_ERRO);
-			goto error;
+			continue;
 		}
 
 		LM_DBG("resend: msg [%d-%d] for: %.*s\n", i+1, mid,	str_vals[1].len, str_vals[1].s);
@@ -1766,9 +1779,13 @@ static int sendMessages(const retry_list_el list){
 		body_str.len = MSG_BODY_BUFF_LEN;
 		n = m_build_body(&body_str, rtime, str_vals[2/*body*/], 0);
 		if(n<0)
+		{
 			LM_DBG("resend: sending simple body\n");
+		}
 		else
+		{
 			LM_DBG("resend: sending composed body\n");
+		}
 
 		int res = tmb.t_request(&msg_type,  /* Type of the message */
 								&str_vals[1],     /* Request-URI (To) */
@@ -1776,8 +1793,7 @@ static int sendMessages(const retry_list_el list){
 								&str_vals[0],     /* From */
 								&hdr_str,         /* Optional headers including CRLF */
 								(n<0)?&str_vals[2]:&body_str, /* Message body */
-								(ms_outbound_proxy.s)?&ms_outbound_proxy:0,
-				/* outbound uri */
+								(ms_outbound_proxy.s)?&ms_outbound_proxy:0, /* outbound uri */
 								m_tm_callback,    /* Callback function */
 								(void*)p1->clone, /* Callback parameter */
 								NULL
@@ -1786,25 +1802,31 @@ static int sendMessages(const retry_list_el list){
 		if (res < 0){
 			LM_WARN("resend: message sending failed [%d], res=%d messages for <%.*s>!\n",
 					mid, res, str_vals[1].len, str_vals[1].s);
+
+			msg_list_set_flag(ml, mid, MS_MSG_ERRO);
 		}
 	}
 
 	// Messages not found in the database are removed from retry queue
 	// since its record gets lost.
 
+done:
 	// Remove cloned list.
 	retry_list_el_free_prev_all(list_cloned);
 
-done:
 	/**
 	 * Free the result because we don't need it
 	 * anymore
 	 */
 	if (db_res!=NULL && msilo_dbf.free_result(db_con, db_res) < 0)
+	{
 		LM_ERR("resend: failed to free result of query\n");
+	}
 
 	return 1;
 error:
+	retry_list_el_free_prev_all(list);
+	retry_list_el_free_prev_all(list_cloned);
 	return -1;
 
 }
@@ -1831,13 +1853,13 @@ void m_tm_callback( struct cell *t, int type, struct tmcb_params *ps)
 	}
 	if(ps->code >= 300)
 	{
-		int shouldResend = cur_elem->retry_ctr < ms_retry_count;
-		LM_INFO("message <%d> was not sent successfully, resendCtr: %d, shouldResend: %d\n",
-				cur_elem->msgid, cur_elem->retry_ctr, shouldResend);
+		int should_resend = cur_elem->retry_ctr < ms_retry_count;
+		LM_INFO("message <%d> was not sent successfully, resendCtr: %d, should_resend: %d\n",
+				cur_elem->msgid, cur_elem->retry_ctr, should_resend);
 
-		if (shouldResend){
+		if (should_resend){
 			retry_add_element(rl, cur_elem->msgid, cur_elem->retry_ctr + 1, 0);
-			signalNewTask();
+			signal_new_task();
 		}
 		goto done;
 	}
@@ -1853,7 +1875,12 @@ void m_tm_callback( struct cell *t, int type, struct tmcb_params *ps)
 	return;
 }
 
-static int buildSqlQuery(char * sql_query, str * sql_str, long * midsToLoad, size_t midsToLoadSize) {
+/**
+ * Builds SQL Query string sql_str, using sql_query buffer. Constructs SELECT query to load all
+ * messages for sending with specified message ids.
+ */
+static int build_sql_query(char *sql_query, str *sql_str, long *mids_to_load, size_t mids_to_load_size)
+{
 	int off = 0, ret = 0, i = 0;
 	ret = snprintf(sql_query, PH_SQL_BUF_LEN, "SELECT `%.*s`, `%.*s`, `%.*s`, `%.*s`, `%.*s`, `%.*s` FROM `%.*s` WHERE ",
 				   sc_mid.len, sc_mid.s,
@@ -1867,12 +1894,12 @@ static int buildSqlQuery(char * sql_query, str * sql_str, long * midsToLoad, siz
 	off = ret;
 
 	// WHERE conditions.
-	for(i = 0; i < midsToLoadSize; i++){
-		ret = snprintf(sql_query + off, PH_SQL_BUF_LEN - off, " `%.*s`=%d ", sc_mid.len, sc_mid.s, (int)midsToLoad[i]);
+	for(i = 0; i < mids_to_load_size; i++){
+		ret = snprintf(sql_query + off, PH_SQL_BUF_LEN - off, " `%.*s`=%d ", sc_mid.len, sc_mid.s, (int) mids_to_load[i]);
 		if (ret < 0 || ret >= (PH_SQL_BUF_LEN - off)) goto error;
 		off += ret;
 
-		if (i+1 < midsToLoadSize){
+		if (i+1 < mids_to_load_size){
 			ret = snprintf(sql_query + off, PH_SQL_BUF_LEN - off, " OR ");
 			if (ret < 0 || ret >= (PH_SQL_BUF_LEN - off)) goto error;
 			off += ret;
@@ -1892,4 +1919,26 @@ static int buildSqlQuery(char * sql_query, str * sql_str, long * midsToLoad, siz
 	return 0;
 error:
 	return -1;
+}
+
+/**
+ * Waits until time is reached, checking sender cancellation.
+ */
+static int wait_not_before(time_t not_before)
+{
+	while(sender_threads_running)
+	{
+		time_t send_time;
+		time(&send_time);
+		if (not_before > send_time)
+		{
+			usleep(50l*1000l);
+		}
+		else
+		{
+			break;
+		}
+	}
+
+	return 0;
 }
