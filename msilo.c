@@ -215,7 +215,7 @@ static int msg_process_prefork(void);
 static int msg_process_postfork(void);
 static void msg_process(int rank);
 static int build_sql_query(char *sql_query, str *sql_str, int *mids_to_load, size_t mids_to_load_size);
-static int wait_not_before(time_t not_before);
+static unsigned long wait_not_before(time_t not_before);
 static int send_messages(retry_list_el list);
 static int msg_set_flags_all_list_prev(retry_list_el list, int flag);
 static int msg_set_flags_all(int *mids, size_t mids_size, int flag);
@@ -1004,8 +1004,8 @@ static int m_dump(struct sip_msg* msg, char* owner, char* str2)
 		goto done;
 	}
 
-	LM_INFO("dumping [%d] messages for <%.*s>!!!\n",
-			RES_ROW_N(db_res), pto->uri.len, pto->uri.s);
+	LM_INFO("dumping [%d] messages for <%.*s>, dumpId: %ld, delay: %d!!!\n",
+			RES_ROW_N(db_res), pto->uri.len, pto->uri.s, (long) dumpId, ms_delay_sec);
 
 	for(i = 0; i < RES_ROW_N(db_res); i++)
 	{
@@ -1669,7 +1669,14 @@ static int send_messages(retry_list_el list){
 	// Usually the first message determines the waiting time for the whole bunch.
 	// It is better to wait here than during SQL result set processing for each message
 	// since no SQL-related resources are blocked.
-	wait_not_before(list->not_before);
+	unsigned long time_slept = wait_not_before(list->not_before);
+	time(&dump_id);
+
+	if (time_slept > 0)
+	{
+		LM_INFO("Slept for first fetch: %lu iterations, not_before: %ld, now: %ld, diff: %ld, mid: %d\n",
+				time_slept, (long)list->not_before, (long)dump_id, (long)(dump_id - list->not_before), list->msgid);
+	}
 
 	// Load message with given MID from database.
 	// Need to clone the list as the original list may got deallocated by tx_callbacks
@@ -1700,7 +1707,6 @@ static int send_messages(retry_list_el list){
 		goto error;
 	}
 
-	time(&dump_id);
 	if (msilo_dbf.use_table(db_con, &ms_db_table) < 0)
 	{
 		LM_ERR("failed to use_table\n");
@@ -1752,7 +1758,11 @@ static int send_messages(retry_list_el list){
 		}
 
 		// Waiting for not-before so message is sent no earlier than necessary / required.
-		wait_not_before(p1->not_before);
+		time_slept = wait_not_before(p1->not_before);
+		if (time_slept > 0)
+		{
+			LM_INFO("Slept during sending: %lu iterations, not_before: %ld, mid: %d\n", time_slept, (long)p1->not_before, mid);
+		}
 
 		// Remove bounds for original
 		p1->clone->next = NULL;
@@ -1949,14 +1959,16 @@ error:
 /**
  * Waits until time is reached, checking sender cancellation.
  */
-static int wait_not_before(time_t not_before)
+static unsigned long wait_not_before(time_t not_before)
 {
+	unsigned long wait_iter = 0;
 	while(sender_threads_running)
 	{
 		time_t send_time;
 		time(&send_time);
 		if (not_before > send_time)
 		{
+			wait_iter += 1;
 			usleep(50l*1000l);
 		}
 		else
@@ -1965,7 +1977,7 @@ static int wait_not_before(time_t not_before)
 		}
 	}
 
-	return 0;
+	return wait_iter;
 }
 
 static int msg_set_flags_all_list_prev(retry_list_el list, int flag)
