@@ -1876,6 +1876,10 @@ void m_tm_callback( struct cell *t, int type, struct tmcb_params *ps)
 			retry_add_element(rl, cur_elem->msgid, cur_elem->retry_ctr + 1, 0);
 			signal_new_task();
 		}
+		else
+		{
+			msg_list_set_flag(ml, cur_elem->msgid, MS_MSG_ERRO);
+		}
 
 		// Free SHM memory.
 		retry_list_el_free(cur_elem);
