@@ -25,6 +25,7 @@
 
 #include <time.h>
 #include "../../str.h"
+#include "msilo.h"
 
 #define CT_TYPE		1
 #define CT_CHARSET	2

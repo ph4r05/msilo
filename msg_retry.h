@@ -6,6 +6,7 @@
 #define OPENSIPS_1_11_2_TLS_MSG_RETRY_H
 
 #include "../../locking.h"
+#include "msilo.h"
 
 #define MS_MSG_NULL	(0)
 #define MS_MSG_SENT	(1<<0)
@@ -32,7 +33,7 @@
 
 typedef struct _retry_list_el
 {
-    int msgid;
+    t_msg_mid msgid;
     int flag;
 
     int retry_ctr;
@@ -45,7 +46,7 @@ typedef struct _retry_list_el
 
 typedef struct _retry_list
 {
-    int nrretry;
+    long nrretry;
     retry_list_el lretry_new;
     retry_list_el lretry_pop;
     gen_lock_t  sem_retry;
@@ -57,7 +58,7 @@ void retry_list_el_free_all(retry_list_el);
 
 retry_list retry_list_init();
 void retry_list_free(retry_list);
-int retry_add_element(retry_list ml, int mid, int retry_ctr, time_t not_before);
+int retry_add_element(retry_list ml, t_msg_mid mid, int retry_ctr, time_t not_before);
 retry_list_el retry_peek_n(retry_list ml, size_t n, size_t * size);
 int retry_is_empty(retry_list ml);
 retry_list_el retry_list_reset(retry_list ml);

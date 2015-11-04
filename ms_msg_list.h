@@ -31,6 +31,7 @@
 
 
 #include "../../locking.h"
+#include "msilo.h"
 
 #define MS_MSG_NULL	(0)
 #define MS_MSG_SENT	(1<<0)
@@ -57,7 +58,7 @@
 
 typedef struct _msg_list_el
 {
-	int msgid;
+	t_msg_mid msgid;
 	int flag;
 	int retry_ctr; // Retry counter for failed message.
 	struct _msg_list_el * prev;
@@ -66,8 +67,8 @@ typedef struct _msg_list_el
 
 typedef struct _msg_list
 {
-	int nrsent;
-	int nrdone;
+	long nrsent;
+	long nrdone;
 	msg_list_el lsent;
 	msg_list_el ldone;
 	gen_lock_t  sem_sent;
@@ -80,8 +81,8 @@ void msg_list_el_free_all(msg_list_el);
 
 msg_list msg_list_init();
 void msg_list_free(msg_list);
-int msg_list_check_msg(msg_list, int, int *, int *);
-int msg_list_set_flag(msg_list, int, int);
+int msg_list_check_msg(msg_list, t_msg_mid, int *, int *);
+int msg_list_set_flag(msg_list, t_msg_mid, int);
 int msg_list_check(msg_list);
 msg_list_el msg_list_reset(msg_list);
 
