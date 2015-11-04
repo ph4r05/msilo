@@ -146,11 +146,11 @@ void**  ms_contact_sp = NULL;
 void**  ms_content_type_sp = NULL;
 void**  ms_offline_message_sp = NULL;
 
-int  ms_expire_time = 259200;
-int  ms_check_time = 60;
+long  ms_expire_time = 259200;
+long  ms_check_time = 60;
 int  ms_retry_count = 2;
 int  ms_delay_sec = 5;
-int  ms_send_time = 0;
+long  ms_send_time = 0;
 int  ms_clean_period = 10;
 int  ms_use_contact = 1;
 int  ms_add_date = 1;
@@ -543,7 +543,9 @@ static int m_store(struct sip_msg* msg, char* owner, char* s2)
 	db_key_t db_cols[1];
 	db_res_t* res = NULL;
 
-	int nr_keys = 0, val, lexpire;
+	int nr_keys = 0;
+	long val;
+	long lexpire=0;
 	content_type_t ctype;
 #define MS_BUF1_SIZE	MSG_BODY_BUFF_LEN
 #define MS_MSG_TYPE_SIZE	64
@@ -750,27 +752,27 @@ static int m_store(struct sip_msg* msg, char* owner, char* s2)
 	}
 
 	/* current time */
-	val = (int)time(NULL);
+	val = (long)time(NULL);
 
 	/* add expiration time */
 	db_keys[nr_keys] = &sc_exp_time;
-	db_vals[nr_keys].type = DB_INT;
+	db_vals[nr_keys].type = DB_BIGINT;
 	db_vals[nr_keys].nul = 0;
-	db_vals[nr_keys].val.int_val = val+lexpire;
+	db_vals[nr_keys].val.bigint_val = (long long)val+lexpire;
 	nr_keys++;
 
 	/* add incoming time */
 	db_keys[nr_keys] = &sc_inc_time;
-	db_vals[nr_keys].type = DB_INT;
+	db_vals[nr_keys].type = DB_BIGINT;
 	db_vals[nr_keys].nul = 0;
-	db_vals[nr_keys].val.int_val = val;
+	db_vals[nr_keys].val.bigint_val = (long long)val;
 	nr_keys++;
 
 	/* add sending time */
 	db_keys[nr_keys] = &sc_snd_time;
-	db_vals[nr_keys].type = DB_INT;
+	db_vals[nr_keys].type = DB_BIGINT;
 	db_vals[nr_keys].nul = 0;
-	db_vals[nr_keys].val.int_val = 0;
+	db_vals[nr_keys].val.bigint_val = 0ll;
 	if(ms_snd_time_avp_name >= 0)
 	{
 		avp = NULL;
@@ -778,8 +780,8 @@ static int m_store(struct sip_msg* msg, char* owner, char* s2)
 				&avp_value, 0);
 		if(avp!=NULL && is_avp_str_val(avp))
 		{
-			if(ms_extract_time(&avp_value.s, &db_vals[nr_keys].val.int_val)!=0)
-				db_vals[nr_keys].val.int_val = 0;
+			if(ms_extract_time(&avp_value.s, &db_vals[nr_keys].val.bigint_val)!=0)
+				db_vals[nr_keys].val.bigint_val = 0;
 		}
 	}
 	nr_keys++;
@@ -1162,9 +1164,9 @@ void m_clean_silo(unsigned int ticks, void *param)
 	{
 		LM_DBG("cleaning expired messages\n");
 		db_keys[0] = &sc_exp_time;
-		db_vals[0].type = DB_INT;
+		db_vals[0].type = DB_BIGINT;
 		db_vals[0].nul = 0;
-		db_vals[0].val.int_val = (int)time(NULL);
+		db_vals[0].val.bigint_val = (long long)time(NULL);
 		if (msilo_dbf.delete(db_con, db_keys, db_ops, db_vals, 1) < 0)
 			LM_DBG("ERROR cleaning expired messages\n");
 	}
@@ -1234,10 +1236,10 @@ void m_send_ontimer(unsigned int ticks, void *param)
 	db_vals[0].nul = 0;
 	db_vals[0].val.int_val = 0;
 
-	db_vals[1].type = DB_INT;
+	db_vals[1].type = DB_BIGINT;
 	db_vals[1].nul = 0;
 	ttime = time(NULL);
-	db_vals[1].val.int_val = (int)ttime;
+	db_vals[1].val.bigint_val = (long long)ttime;
 
 	if (msilo_dbf.use_table(db_con, &ms_db_table) < 0)
 	{
@@ -1294,7 +1296,7 @@ void m_send_ontimer(unsigned int ticks, void *param)
 		/** sending using TM function: t_uac */
 		body_str.len = MSG_BODY_BUFF_LEN;
 		stime =
-			(time_t)RES_ROWS(db_res)[i].values[5/*snd time*/].val.int_val;
+			(time_t)RES_ROWS(db_res)[i].values[5/*snd time*/].val.bigint_val;
 		n = m_build_body(&body_str, 0, str_vals[2/*body*/], stime);
 		if(n<0)
 			LM_DBG("sending simple body\n");
@@ -1821,7 +1823,7 @@ static int send_messages(retry_list_el list){
 		SET_STR_VAL(str_vals[1], db_res, i, 2); /* to */
 		SET_STR_VAL(str_vals[2], db_res, i, 3); /* body */
 		SET_STR_VAL(str_vals[3], db_res, i, 4); /* ctype */
-		rtime = (time_t)RES_ROWS(db_res)[i].values[5/*inc time*/].val.int_val;
+		rtime = (time_t)RES_ROWS(db_res)[i].values[5/*inc time*/].val.bigint_val;
 
 		hdr_str.len = MSG_HDR_BUFF_LEN;
 		if(m_build_headers(&hdr_str, str_vals[3] /*ctype*/,
