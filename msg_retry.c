@@ -116,7 +116,7 @@ void retry_list_free(retry_list ml)
 /**
  * adds given entry to the retry list.
  */
-int retry_add_element(retry_list ml, int mid, int retry_ctr, time_t not_before)
+int retry_add_element(retry_list ml, t_msg_mid mid, int retry_ctr, time_t not_before)
 {
     retry_list_el p0;
 
@@ -125,7 +125,7 @@ int retry_add_element(retry_list ml, int mid, int retry_ctr, time_t not_before)
         goto errorx;
     }
 
-    LM_DBG("adding msgid=%d\n", mid);
+    LM_DBG("adding msgid=%lld\n", (long long)mid);
 
     lock_get(&ml->sem_retry);
 

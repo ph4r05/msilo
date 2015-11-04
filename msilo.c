@@ -71,6 +71,7 @@
 #include "ms_msg_list.h"
 #include "msg_retry.h"
 #include "msfuncs.h"
+#include "msilo.h"
 
 #define MAX_DEL_KEYS	1
 #define MAX_PEEK_NUM	10
@@ -172,7 +173,7 @@ void destroy(void);
 void m_clean_silo(unsigned int ticks, void *);
 void m_send_ontimer(unsigned int ticks, void *);
 
-int ms_reset_stime(int mid);
+int ms_reset_stime(t_msg_mid mid);
 
 int check_message_support(struct sip_msg* msg);
 
@@ -214,11 +215,11 @@ int pid = 0;
 static int msg_process_prefork(void);
 static int msg_process_postfork(void);
 static void msg_process(int rank);
-static int build_sql_query(char *sql_query, str *sql_str, int *mids_to_load, size_t mids_to_load_size);
+static int build_sql_query(char *sql_query, str *sql_str, t_msg_mid *mids_to_load, size_t mids_to_load_size);
 static unsigned long wait_not_before(time_t not_before);
 static int send_messages(retry_list_el list);
 static int msg_set_flags_all_list_prev(retry_list_el list, int flag);
-static int msg_set_flags_all(int *mids, size_t mids_size, int flag);
+static int msg_set_flags_all(t_msg_mid *mids, size_t mids_size, int flag);
 
 static proc_export_t procs[] = {
 		// name, pre-fork, post-fork, function, number, flags
@@ -274,6 +275,7 @@ static param_export_t params[]={
 
 #ifdef STATISTICS
 #include "../../statistics.h"
+#include "../../db/db_val.h"
 
 stat_var* ms_stored_msgs;
 stat_var* ms_dumped_msgs;
@@ -881,7 +883,8 @@ static int m_dump(struct sip_msg* msg, char* owner, char* str2)
 	db_val_t db_vals[3];
 	db_key_t db_cols[1];
 	db_res_t* db_res = NULL;
-	int i, db_no_cols = 1, db_no_keys = 3, mid;
+	int i, db_no_cols = 1, db_no_keys = 3;
+	t_msg_mid mid = 0;
 	struct sip_uri puri;
 	str owner_s;
 
@@ -1011,10 +1014,10 @@ static int m_dump(struct sip_msg* msg, char* owner, char* str2)
 	{
 		int cur_flags = 0;
 		int cur_retry = 0;
-		mid =  RES_ROWS(db_res)[i].values[0].val.int_val;
+		mid =  RES_ROWS(db_res)[i].values[0].val.bigint_val;
 		if(msg_list_check_msg(ml, mid, &cur_retry, &cur_flags))
 		{
-			LM_INFO("message[%d] mid=%d already sent. Flags: %d, retry: %d\n", i, mid, cur_flags, cur_retry);
+			LM_INFO("message[%d] mid=%lld already sent. Flags: %d, retry: %d\n", i, (long long)mid, cur_flags, cur_retry);
 			continue;
 		}
 
@@ -1069,10 +1072,10 @@ void m_clean_silo(unsigned int ticks, void *param)
 #endif
 
 			db_keys[n] = &sc_mid;
-			db_vals[n].type = DB_INT;
+			db_vals[n].type = DB_BIGINT;
 			db_vals[n].nul = 0;
-			db_vals[n].val.int_val = p->msgid;
-			LM_DBG("cleaning sent message [%d]\n", p->msgid);
+			db_vals[n].val.bigint_val = p->msgid;
+			LM_DBG("cleaning sent message [%lld]\n", (long long)p->msgid);
 			n++;
 			if(n==MAX_DEL_KEYS)
 			{
@@ -1146,7 +1149,8 @@ void m_send_ontimer(unsigned int ticks, void *param)
 	db_val_t db_vals[2];
 	db_key_t db_cols[6];
 	db_res_t* db_res = NULL;
-	int i, db_no_cols = 6, db_no_keys = 2, mid, n;
+	int i, db_no_cols = 6, db_no_keys = 2;
+	t_msg_mid mid, n;
 	static char hdr_buf[MSG_HDR_BUFF_LEN];
 	static char uri_buf[1024];
 	static char body_buf[MSG_BODY_BUFF_LEN];
@@ -1211,10 +1215,10 @@ void m_send_ontimer(unsigned int ticks, void *param)
 
 	for(i = 0; i < RES_ROW_N(db_res); i++)
 	{
-		mid =  RES_ROWS(db_res)[i].values[0].val.int_val;
+		mid = RES_ROWS(db_res)[i].values[0].val.bigint_val;
 		if(msg_list_check_msg(ml, mid, NULL, NULL))
 		{
-			LM_DBG("message[%d] mid=%d already sent.\n", i, mid);
+			LM_DBG("message[%d] mid=%lld already sent.\n", i, (long long) mid);
 			continue;
 		}
 
@@ -1228,7 +1232,7 @@ void m_send_ontimer(unsigned int ticks, void *param)
 		if(m_build_headers(&hdr_str, str_vals[3] /*ctype*/,
 				ms_reminder/*from*/,0/*Date*/, (long) (dumpId * 1000l)) < 0)
 		{
-			LM_ERR("headers building failed [%d]\n", mid);
+			LM_ERR("headers building failed [%lld]\n", (long long)mid);
 			if (msilo_dbf.free_result(db_con, db_res) < 0)
 				LM_DBG("failed to free result of query\n");
 			msg_list_set_flag(ml, mid, MS_MSG_ERRO);
@@ -1242,7 +1246,7 @@ void m_send_ontimer(unsigned int ticks, void *param)
 		puri.s[4+str_vals[0].len] = '@';
 		memcpy(puri.s+4+str_vals[0].len+1, str_vals[1].s, str_vals[1].len);
 
-		LM_DBG("msg [%d-%d] for: %.*s\n", i+1, mid,	puri.len, puri.s);
+		LM_DBG("msg [%d-%lld] for: %.*s\n", i+1, (long long)mid, puri.len, puri.s);
 
 		/** sending using TM function: t_uac */
 		body_str.len = MSG_BODY_BUFF_LEN;
@@ -1265,7 +1269,7 @@ void m_send_ontimer(unsigned int ticks, void *param)
 					(ms_outbound_proxy.s)?&ms_outbound_proxy:0,
 							/* outbound uri */
 					m_tm_callback,    /* Callback function */
-					(void*)(long)mid,  /* Callback parameter */
+					(void*)(t_msg_mid)mid,  /* Callback parameter */
 					NULL
 				);
 	}
@@ -1280,7 +1284,7 @@ done:
 	return;
 }
 
-int ms_reset_stime(int mid)
+int ms_reset_stime(t_msg_mid mid)
 {
 	db_key_t db_keys[1];
 	db_op_t  db_ops[1];
@@ -1291,9 +1295,9 @@ int ms_reset_stime(int mid)
 	db_keys[0]=&sc_mid;
 	db_ops[0]=OP_EQ;
 
-	db_vals[0].type = DB_INT;
+	db_vals[0].type = DB_BIGINT;
 	db_vals[0].nul = 0;
-	db_vals[0].val.int_val = mid;
+	db_vals[0].val.bigint_val = mid;
 
 
 	db_cols[0]=&sc_snd_time;
@@ -1301,7 +1305,7 @@ int ms_reset_stime(int mid)
 	db_cvals[0].nul = 0;
 	db_cvals[0].val.int_val = 0;
 
-	LM_DBG("updating send time for [%d]!\n", mid);
+	LM_DBG("updating send time for [%lld]!\n", (long long) mid);
 
 	if (msilo_dbf.use_table(db_con, &ms_db_table) < 0)
 	{
@@ -1311,7 +1315,7 @@ int ms_reset_stime(int mid)
 
 	if(msilo_dbf.update(db_con,db_keys,db_ops,db_vals,db_cols,db_cvals,1,1)!=0)
 	{
-		LM_ERR("failed to make update for [%d]!\n",	mid);
+		LM_ERR("failed to make update for [%lld]!\n", (long long)mid);
 		return -1;
 	}
 	return 0;
@@ -1656,7 +1660,7 @@ static int send_messages(retry_list_el list){
 	time_t rtime;
 	time_t dump_id;
 
-	int mids_to_load[MAX_PEEK_NUM];
+	t_msg_mid mids_to_load[MAX_PEEK_NUM];
 	size_t mids_to_load_size = 0;
 
 	// Logic.
@@ -1674,8 +1678,8 @@ static int send_messages(retry_list_el list){
 
 	if (time_slept > 0)
 	{
-		LM_INFO("Slept for first fetch: %lu iterations, not_before: %ld, now: %ld, diff: %ld, mid: %d\n",
-				time_slept, (long)list->not_before, (long)dump_id, (long)(dump_id - list->not_before), list->msgid);
+		LM_INFO("Slept for first fetch: %lu iterations, not_before: %ld, now: %ld, diff: %ld, mid: %lld\n",
+				time_slept, (long)list->not_before, (long)dump_id, (long)(dump_id - list->not_before), (long long) list->msgid);
 	}
 
 	// Load message with given MID from database.
@@ -1728,7 +1732,7 @@ static int send_messages(retry_list_el list){
 		retry_list_el p1 = list_cloned;
 
 		int find_iter = 0;
-		const int mid = RES_ROWS(db_res)[i].values[0].val.int_val;
+		const t_msg_mid mid = RES_ROWS(db_res)[i].values[0].val.bigint_val;
 
 		// Find this mid in the list.
 		while(p1)
@@ -1745,14 +1749,14 @@ static int send_messages(retry_list_el list){
 		// this loop was processing data. Cloning is neccessary though.
 		if (p1 == NULL)
 		{
-			LM_CRIT("Message loaded from DB not found in list: <%d>, find_iter: [%d]", mid, find_iter);
+			LM_CRIT("Message loaded from DB not found in list: <%lld>, find_iter: [%d]", (long long) mid, find_iter);
 			msg_list_set_flag(ml, mid, MS_MSG_ERRO);
 			continue;
 		}
 
 		if (p1->clone == NULL)
 		{
-			LM_CRIT("Message loaded from DB has no cloned record <%d>, %p, find_iter: [%d]", mid, p1, find_iter);
+			LM_CRIT("Message loaded from DB has no cloned record <%lld>, %p, find_iter: [%d]", (long long) mid, p1, find_iter);
 			msg_list_set_flag(ml, mid, MS_MSG_ERRO);
 			continue;
 		}
@@ -1761,7 +1765,7 @@ static int send_messages(retry_list_el list){
 		time_slept = wait_not_before(p1->not_before);
 		if (time_slept > 0)
 		{
-			LM_INFO("Slept during sending: %lu iterations, not_before: %ld, mid: %d\n", time_slept, (long)p1->not_before, mid);
+			LM_INFO("Slept during sending: %lu iterations, not_before: %ld, mid: %lld\n", time_slept, (long)p1->not_before, (long long)mid);
 		}
 
 		// Remove bounds for original
@@ -1780,7 +1784,7 @@ static int send_messages(retry_list_el list){
 		if(m_build_headers(&hdr_str, str_vals[3] /*ctype*/,
 						   str_vals[0]/*from*/, rtime /*Date*/, (long) (dump_id * 1000l)) < 0)
 		{
-			LM_ERR("resend: headers building failed [%d]\n", mid);
+			LM_ERR("resend: headers building failed [%lld]\n", (long long) mid);
 			if (msilo_dbf.free_result(db_con, db_res) < 0)
 			{
 				LM_ERR("resend: failed to free the query result\n");
@@ -1790,7 +1794,7 @@ static int send_messages(retry_list_el list){
 			continue;
 		}
 
-		LM_DBG("resend: msg [%d-%d] for: %.*s\n", i+1, mid,	str_vals[1].len, str_vals[1].s);
+		LM_DBG("resend: msg [%d-%lld] for: %.*s\n", i+1, (long long) mid, str_vals[1].len, str_vals[1].s);
 
 		/** sending using TM function: t_uac */
 		body_str.len = MSG_BODY_BUFF_LEN;
@@ -1817,8 +1821,8 @@ static int send_messages(retry_list_el list){
 		);
 
 		if (res < 0){
-			LM_WARN("resend: message sending failed [%d], res=%d messages for <%.*s>!\n",
-					mid, res, str_vals[1].len, str_vals[1].s);
+			LM_WARN("resend: message sending failed [%lld], res=%d messages for <%.*s>!\n",
+					(long long) mid, res, str_vals[1].len, str_vals[1].s);
 
 			msg_list_set_flag(ml, mid, MS_MSG_ERRO);
 		}
@@ -1869,7 +1873,7 @@ void m_tm_callback( struct cell *t, int type, struct tmcb_params *ps)
 
 	cur_elem = *((retry_list_el*)ps->param);
 
-	LM_INFO("completed with status %d [mid: %d]\n", ps->code, cur_elem->msgid);
+	LM_INFO("completed with status %d [mid: %lld]\n", ps->code, (long long) cur_elem->msgid);
 	if(!db_con)
 	{
 		LM_ERR("db_con is NULL\n");
@@ -1878,8 +1882,8 @@ void m_tm_callback( struct cell *t, int type, struct tmcb_params *ps)
 	if(ps->code >= 300)
 	{
 		int should_resend = cur_elem->retry_ctr < ms_retry_count;
-		LM_INFO("message <%d> was not sent successfully, resendCtr: %d, should_resend: %d\n",
-				cur_elem->msgid, cur_elem->retry_ctr, should_resend);
+		LM_INFO("message <%lld> was not sent successfully, resendCtr: %d, should_resend: %d\n",
+				(long long)cur_elem->msgid, cur_elem->retry_ctr, should_resend);
 
 		if (should_resend)
 		{
@@ -1899,7 +1903,7 @@ void m_tm_callback( struct cell *t, int type, struct tmcb_params *ps)
 	}
 
 	// By seting DONE cleaning thread will remove it from the list and from the database.
-	LM_INFO("message <%d> was sent successfully\n", cur_elem->msgid);
+	LM_INFO("message <%lld> was sent successfully\n", (long long)cur_elem->msgid);
 	msg_list_set_flag(ml, cur_elem->msgid, MS_MSG_DONE);
 
 	// Free SHM memory.
@@ -1914,7 +1918,7 @@ void m_tm_callback( struct cell *t, int type, struct tmcb_params *ps)
  * Builds SQL Query string sql_str, using sql_query buffer. Constructs SELECT query to load all
  * messages for sending with specified message ids.
  */
-static int build_sql_query(char *sql_query, str *sql_str, int *mids_to_load, size_t mids_to_load_size)
+static int build_sql_query(char *sql_query, str *sql_str, t_msg_mid *mids_to_load, size_t mids_to_load_size)
 {
 	int off = 0, ret = 0, i = 0;
 	ret = snprintf(sql_query, PH_SQL_BUF_LEN, "SELECT `%.*s`, `%.*s`, `%.*s`, `%.*s`, `%.*s`, `%.*s` FROM `%.*s` WHERE ",
@@ -1930,7 +1934,7 @@ static int build_sql_query(char *sql_query, str *sql_str, int *mids_to_load, siz
 
 	// WHERE conditions.
 	for(i = 0; i < mids_to_load_size; i++){
-		ret = snprintf(sql_query + off, PH_SQL_BUF_LEN - off, " `%.*s`=%d ", sc_mid.len, sc_mid.s, (int) mids_to_load[i]);
+		ret = snprintf(sql_query + off, PH_SQL_BUF_LEN - off, " `%.*s`=%lld ", sc_mid.len, sc_mid.s, (long long) mids_to_load[i]);
 		if (ret < 0 || ret >= (PH_SQL_BUF_LEN - off)) goto error;
 		off += ret;
 
@@ -1992,7 +1996,7 @@ static int msg_set_flags_all_list_prev(retry_list_el list, int flag)
 	return 0;
 }
 
-static int msg_set_flags_all(int *mids, size_t mids_size, int flag)
+static int msg_set_flags_all(t_msg_mid *mids, size_t mids_size, int flag)
 {
 	size_t i = 0;
 	if (mids == NULL || mids_size == 0)
