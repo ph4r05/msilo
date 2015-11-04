@@ -307,7 +307,7 @@ error:
 }
 
 /* return time stamp of YYYYMMDDHHMMSS */
-int ms_extract_time(str *time_str, int *time_val)
+int ms_extract_time(str *time_str, long long *time_val)
 {
 	struct tm stm;
 	int i;
@@ -433,7 +433,7 @@ int ms_extract_time(str *time_str, int *time_val)
 				return -1;
 		}
 	}
-	*time_val = (int)mktime(&stm);
+	*time_val = (long)mktime(&stm);
 
 	return 0;
 }

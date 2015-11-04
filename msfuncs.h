@@ -55,7 +55,7 @@ int m_build_headers(str *buf, str ctype, str contact, time_t date, long dumpId);
 /** build MESSAGE body */
 int m_build_body(str *body, time_t date, str msg, time_t sdate);
 
-int ms_extract_time(str *time_str, int *time_val);
+int ms_extract_time(str *time_str, long long *time_val);
 
 #endif
 
