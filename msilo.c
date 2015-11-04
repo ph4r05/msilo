@@ -74,7 +74,7 @@
 
 #define MAX_DEL_KEYS	1
 #define MAX_PEEK_NUM	10
-#define NR_KEYS			10
+#define NR_KEYS			11
 #define PH_SQL_BUF_LEN 2048
 #define MSG_BODY_BUFF_LEN 2048
 #define MSG_HDR_BUFF_LEN 1024
@@ -89,6 +89,7 @@ static str sc_ctype    = str_init("ctype");     /* 6 */
 static str sc_exp_time = str_init("exp_time");  /* 7 */
 static str sc_inc_time = str_init("inc_time");  /* 8 */
 static str sc_snd_time = str_init("snd_time");  /* 9 */
+static str sc_msg_type = str_init("msg_type");  /* 10 */
 
 #define SET_STR_VAL(_str, _res, _r, _c)	\
 	if (RES_ROWS(_res)[_r].values[_c].nul == 0) \
@@ -183,6 +184,8 @@ static void m_tm_callback( struct cell *t, int type, struct tmcb_params *ps);
 /** Sender thread */
 #define SENDER_THREAD_NUM 1
 #define SENDER_THREAD_WAIT_MS 100
+str msg_hdr_type = str_init("X-MsgType");
+
 static volatile int sender_threads_running;
 static int sender_thread_waiters;
 
@@ -266,6 +269,7 @@ static param_export_t params[]={
 	{ "sc_exp_time",      STR_PARAM, &sc_exp_time.s           },
 	{ "sc_inc_time",      STR_PARAM, &sc_inc_time.s           },
 	{ "sc_snd_time",      STR_PARAM, &sc_snd_time.s           },
+	{ "sc_msg_type",      STR_PARAM, &sc_msg_type.s           },
 	{ "snd_time_avp",     STR_PARAM, &ms_snd_time_avp_param.s },
 	{ "add_date",         INT_PARAM, &ms_add_date             },
 	{ "max_messages",     INT_PARAM, &ms_max_messages         },
@@ -331,6 +335,7 @@ static int mod_init(void)
 	sc_exp_time.len = strlen(sc_exp_time.s);
 	sc_inc_time.len = strlen(sc_inc_time.s);
 	sc_snd_time.len = strlen(sc_snd_time.s);
+	sc_msg_type.len = strlen(sc_msg_type.s);
 	if (ms_snd_time_avp_param.s)
 		ms_snd_time_avp_param.len = strlen(ms_snd_time_avp_param.s);
 
@@ -539,12 +544,15 @@ static int m_store(struct sip_msg* msg, char* owner, char* s2)
 	int nr_keys = 0, val, lexpire;
 	content_type_t ctype;
 #define MS_BUF1_SIZE	MSG_BODY_BUFF_LEN
+#define MS_MSG_TYPE_SIZE	64
 	static char ms_buf1[MS_BUF1_SIZE];
+	static char ms_msg_type[MS_MSG_TYPE_SIZE];
 	int mime;
 	str notify_from;
 	str notify_body;
 	str notify_ctype;
 	str notify_contact;
+	str msg_type_value = {NULL, 0};
 
 	int_str        avp_value;
 	struct usr_avp *avp;
@@ -772,6 +780,41 @@ static int m_store(struct sip_msg* msg, char* owner, char* s2)
 				db_vals[nr_keys].val.int_val = 0;
 		}
 	}
+	nr_keys++;
+
+	// MSG-type parsing.
+	if (msg->headers != NULL)
+	{
+		struct hdr_field * p0 = msg->headers;
+		for(; p0 != NULL; p0 = p0->next)
+		{
+			if (p0->type != HDR_OTHER_T && p0->type != HDR_EOH_T)
+			{
+				continue;
+			}
+
+			if (p0->name.len < msg_hdr_type.len && strncmp(p0->name.s, msg_hdr_type.s, (size_t)msg_hdr_type.len) != 0)
+			{
+				continue;
+			}
+			
+			int len_to_copy = MS_MSG_TYPE_SIZE <= p0->body.len ? MS_MSG_TYPE_SIZE-1 : p0->body.len;
+			strncpy(ms_msg_type, p0->body.s, len_to_copy);
+			msg_type_value.s = ms_msg_type;
+			msg_type_value.len = len_to_copy;
+			break;
+		}
+	}
+	else
+	{
+		LM_INFO("Headers not parser for message\n");
+	}
+
+	db_keys[nr_keys] = &sc_msg_type;
+	db_vals[nr_keys].type = DB_STR;
+	db_vals[nr_keys].nul = msg_type_value.len <= 0;
+	db_vals[nr_keys].val.str_val.s   = msg_type_value.s;
+	db_vals[nr_keys].val.str_val.len = msg_type_value.len;
 	nr_keys++;
 
 	if(msilo_dbf.insert(db_con, db_keys, db_vals, nr_keys) < 0)
