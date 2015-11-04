@@ -46,7 +46,7 @@ typedef struct _retry_list_el
 
 typedef struct _retry_list
 {
-    int nrretry;
+    long nrretry;
     retry_list_el lretry_new;
     retry_list_el lretry_pop;
     gen_lock_t  sem_retry;

@@ -210,7 +210,7 @@ retry_list_el retry_peek_n(retry_list ml, size_t n, size_t * size){
     } else {
         ml->lretry_new = NULL;
         if (ml->nrretry != 0){
-            LM_CRIT("Num of nodes does not match: %d!", ml->nrretry);
+            LM_CRIT("Num of nodes does not match: %ld!", ml->nrretry);
         }
     }
 

@@ -67,8 +67,8 @@ typedef struct _msg_list_el
 
 typedef struct _msg_list
 {
-	int nrsent;
-	int nrdone;
+	long nrsent;
+	long nrdone;
 	msg_list_el lsent;
 	msg_list_el ldone;
 	gen_lock_t  sem_sent;
