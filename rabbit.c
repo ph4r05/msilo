@@ -100,6 +100,7 @@ int msilo_rabbit_deinit(t_msilo_rabbit *rabbit)
     rabbit->conn = NULL;
     rabbit->channel_ptr = NULL;
     rabbit->init_ok = 0;
+    return 0;
 }
 
 int msilo_rabbit_started(t_msilo_rabbit *rabbit)
@@ -115,9 +116,7 @@ int msilo_rabbit_send(t_msilo_rabbit *rabbit, char const *queue, void *buff, siz
         return -1;
     }
 
-    int previous_sent = 0;
     int status = 0;
-
     amqp_bytes_t message_bytes;
     message_bytes.len = size;
     message_bytes.bytes = buff;

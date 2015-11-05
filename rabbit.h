@@ -14,7 +14,11 @@
 #include <amqp.h>
 #include <amqp_framing.h>
 
-#define RABBIT_QUEUE_NAME 255
+//
+// Using library:
+// https://github.com/alanxz/rabbitmq-c
+//
+
 typedef struct t_msilo_rabbit
 {
     amqp_connection_state_t     conn;
