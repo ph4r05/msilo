@@ -179,6 +179,13 @@ retry_list_el retry_peek_n(retry_list ml, size_t n, size_t * size){
 
     lock_get(&ml->sem_retry);
 
+    // Fast check for empty list.
+    if (ml->nrretry <= 0){
+        lock_release(&ml->sem_retry);
+        return p_ret;
+    }
+
+    // Find where list of maximally n elements starts (cut-off place)
     p1 = p0 = ml->lretry_pop;
     while(p0) {
         p1 = p0;
@@ -233,7 +240,7 @@ int retry_is_empty(retry_list ml) {
     }
 
     lock_get(&ml->sem_retry);
-    ret = ml->nrretry > 0;
+    ret = ml->nrretry <= 0;
     lock_release(&ml->sem_retry);
 
     return ret;
