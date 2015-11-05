@@ -618,6 +618,7 @@ static int m_store(struct sip_msg* msg, char* owner, char* s2)
 	str notify_ctype;
 	str notify_contact;
 	str msg_type_value = {NULL, 0};
+	long msg_time = 0;
 
 	int_str        avp_value;
 	struct usr_avp *avp;
@@ -827,6 +828,7 @@ static int m_store(struct sip_msg* msg, char* owner, char* s2)
 	db_vals[nr_keys].type = DB_BIGINT;
 	db_vals[nr_keys].nul = 0;
 	db_vals[nr_keys].val.bigint_val = (long long)val;
+	msg_time = val;
 	nr_keys++;
 
 	/* add sending time */
@@ -894,9 +896,17 @@ static int m_store(struct sip_msg* msg, char* owner, char* s2)
     // Send AMQP event
 	if (ms_rabbit_enabled && msilo_rabbit_started(&rabbit))
 	{
-		char * amqp_buff[AMQP_BUFF];
+		char amqp_buff[AMQP_BUFF];
 		size_t amqp_size = 0;
-		snprintf(amqp_buff, AMQP_BUFF, "");
+		snprintf(amqp_buff, AMQP_BUFF,
+				 "{\"job\":\"offlineMessage\", \"data\":{\"from\":\"%.*s\",\"to\":\"%.*s\","
+						 "\"timestampSeconds\":%ld,\"msgType\":\"%.*s\"}}",
+				 pfrom->uri.len, pfrom->uri.s,
+				 pto->uri.len, pto->uri.s,
+				 msg_time,
+				 msg_type_value.len, msg_type_value.s
+		);
+		amqp_size = strlen(amqp_buff);
 
 		msilo_rabbit_send(&rabbit, ms_rabbit_queue, amqp_buff, amqp_size);
 	}

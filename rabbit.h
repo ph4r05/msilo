@@ -27,7 +27,7 @@ typedef struct t_msilo_rabbit
 int msilo_rabbit_init(t_msilo_rabbit *rabbit, const char *host, int port, char const *vhost, char const *username, char const *password);
 int msilo_rabbit_deinit(t_msilo_rabbit *rabbit);
 int msilo_rabbit_started(t_msilo_rabbit *rabbit);
-int msilo_rabbit_send(t_msilo_rabbit *rabbit, char const *queue, void const *buff, size_t size);
+int msilo_rabbit_send(t_msilo_rabbit *rabbit, char const *queue, void *buff, size_t size);
 
 
 #endif //OPENSIPS_1_11_2_TLS_RABBIT_H

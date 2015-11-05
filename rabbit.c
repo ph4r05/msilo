@@ -38,7 +38,7 @@ int msilo_rabbit_init(t_msilo_rabbit *rabbit, const char *host, int port, char c
 
     // Create a new SSL socket.
     rabbit->socket = amqp_ssl_socket_new(rabbit->conn);
-    if (!socket) {
+    if (rabbit->socket == NULL) {
         LM_CRIT("Rabbit SSL connection could not be created");
         check_amqp_status(amqp_destroy_connection(rabbit->conn), "Destroy connection");
         rabbit->conn = NULL;
@@ -74,7 +74,7 @@ int msilo_rabbit_init(t_msilo_rabbit *rabbit, const char *host, int port, char c
     rabbit->channel_ptr = amqp_channel_open(rabbit->conn, rabbit->channel);
 
     // Check reply
-    reply = amqp_get_rpc_reply(conn);
+    reply = amqp_get_rpc_reply(rabbit->conn);
     status = check_amqp_error(reply, "Opening channel");
     if (status < 0){
         check_amqp_error(amqp_channel_close(rabbit->conn, rabbit->channel, AMQP_REPLY_SUCCESS), "Channel close");
@@ -107,9 +107,9 @@ int msilo_rabbit_started(t_msilo_rabbit *rabbit)
     return rabbit != NULL && rabbit->conn != NULL && rabbit->init_ok != 0;
 }
 
-int msilo_rabbit_send(t_msilo_rabbit *rabbit, char const *queue, void const *buff, size_t size)
+int msilo_rabbit_send(t_msilo_rabbit *rabbit, char const *queue, void *buff, size_t size)
 {
-    if (rabbit == NULL || rabbit->is_ok != 1)
+    if (rabbit == NULL || rabbit->init_ok != 1)
     {
         LM_ERR("Could not send RabbitMQ message, initialization failed");
         return -1;
