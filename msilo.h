@@ -8,4 +8,8 @@
 // MID type definition.
 typedef long long t_msg_mid;
 
+#ifndef NSEC_PER_SEC
+#define NSEC_PER_SEC  1000000000LL
+#endif
+
 #endif //OPENSIPS_1_11_2_TLS_MSILO_H

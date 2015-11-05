@@ -191,10 +191,10 @@ static volatile int sender_threads_running;
 static int sender_thread_waiters;
 
 pthread_mutex_t * p_sender_thread_queue_cond_mutex = NULL;
-pthread_mutexattr_t sender_thread_queue_cond_mutex_attr;
+pthread_mutexattr_t * p_sender_thread_queue_cond_mutex_attr = NULL;
 
 pthread_cond_t * p_sender_thread_queue_cond = NULL;
-pthread_condattr_t sender_thread_queue_cond_attr;
+pthread_condattr_t * p_sender_thread_queue_cond_attr = NULL;
 
 typedef struct t_senderThreadArg_ {
 	int thread_id;
@@ -223,6 +223,7 @@ static unsigned long wait_not_before(time_t not_before);
 static int send_messages(retry_list_el list);
 static int msg_set_flags_all_list_prev(retry_list_el list, int flag);
 static int msg_set_flags_all(t_msg_mid *mids, size_t mids_size, int flag);
+static void timespec_add_milli(struct timespec * time_to_change, struct timeval * now, long long milli_seconds);
 
 static proc_export_t procs[] = {
 		// name, pre-fork, post-fork, function, number, flags
@@ -1482,6 +1483,7 @@ static void msg_process(int rank)
  * Called when server starts so shared variables for all processes are allocated and initialized.
  */
 static int init_sender_worker_env(void){
+	int res = 0;
 	sender_threads_running = 1;
 	sender_thread_waiters = 0;
 
@@ -1491,9 +1493,25 @@ static int init_sender_worker_env(void){
 		return -1;
 	}
 
+	/* Allocate memory for cond mutex attribute */
+	p_sender_thread_queue_cond_mutex_attr = (pthread_mutexattr_t *)shm_malloc(sizeof(pthread_mutexattr_t));
+	if (p_sender_thread_queue_cond_mutex_attr == NULL){
+		LM_CRIT("Could not allocate memory for mutex attribute");
+		return -1;
+	}
+
 	/* Initialise attribute to mutex. */
-	pthread_mutexattr_init(&sender_thread_queue_cond_mutex_attr);
-	pthread_mutexattr_setpshared(&sender_thread_queue_cond_mutex_attr, PTHREAD_PROCESS_SHARED);
+	res = pthread_mutexattr_init(p_sender_thread_queue_cond_mutex_attr);
+	if (res != 0){
+		LM_CRIT("Could not initialize mutex attribute, code: %d", res);
+		return -1;
+	}
+
+	res = pthread_mutexattr_setpshared(p_sender_thread_queue_cond_mutex_attr, PTHREAD_PROCESS_SHARED);
+	if (res != 0){
+		LM_CRIT("Could not set mutex attribute to process shared, code: %d", res);
+		return -1;
+	}
 
 	/* Allocate memory to pmutex here. */
 	p_sender_thread_queue_cond_mutex = (pthread_mutex_t *)shm_malloc(sizeof(pthread_mutex_t));
@@ -1503,11 +1521,31 @@ static int init_sender_worker_env(void){
 	}
 
 	/* Initialise mutex. */
-	pthread_mutex_init(p_sender_thread_queue_cond_mutex, &sender_thread_queue_cond_mutex_attr);
+	res = pthread_mutex_init(p_sender_thread_queue_cond_mutex, p_sender_thread_queue_cond_mutex_attr);
+	if (res != 0){
+		LM_CRIT("Could not initialize cond mutex, code: %d", res);
+		return -1;
+	}
+
+	/* Allocate memory for cond mutex attribute */
+	p_sender_thread_queue_cond_attr = (pthread_condattr_t *)shm_malloc(sizeof(pthread_condattr_t));
+	if (p_sender_thread_queue_cond_attr == NULL){
+		LM_CRIT("Could not allocate memory for cond attribute");
+		return -1;
+	}
 
 	/* Initialise attribute to condition. */
-	pthread_condattr_init(&sender_thread_queue_cond_attr);
-	pthread_condattr_setpshared(&sender_thread_queue_cond_attr, PTHREAD_PROCESS_SHARED);
+	res = pthread_condattr_init(p_sender_thread_queue_cond_attr);
+	if (res != 0){
+		LM_CRIT("Could not init conditional variable attribute, code: %d", res);
+		return -1;
+	}
+
+	res = pthread_condattr_setpshared(p_sender_thread_queue_cond_attr, PTHREAD_PROCESS_SHARED);
+	if (res != 0){
+		LM_CRIT("Could not set conditional attribute PROCESS_SHARED, code: %d", res);
+		return -1;
+	}
 
 	/* Allocate memory to pcond here. */
 	p_sender_thread_queue_cond = (pthread_cond_t *)shm_malloc(sizeof(pthread_cond_t));
@@ -1517,7 +1555,11 @@ static int init_sender_worker_env(void){
 	}
 
 	/* Initialise condition. */
-	pthread_cond_init(p_sender_thread_queue_cond, &sender_thread_queue_cond_attr);
+	res = pthread_cond_init(p_sender_thread_queue_cond, p_sender_thread_queue_cond_attr);
+	if (res != 0){
+		LM_CRIT("Could not init conditional variable, code: %d", res);
+		return -1;
+	}
 
 	return 0;
 }
@@ -1537,7 +1579,11 @@ static int destroy_sender_worker_env(void){
 		p_sender_thread_queue_cond_mutex = NULL;
 	}
 
-	pthread_mutexattr_destroy(&sender_thread_queue_cond_mutex_attr);
+	if (p_sender_thread_queue_cond_mutex_attr != NULL) {
+		pthread_mutexattr_destroy(p_sender_thread_queue_cond_mutex_attr);
+		shm_free(p_sender_thread_queue_cond_mutex_attr);
+		p_sender_thread_queue_cond_mutex_attr = NULL;
+	}
 
 	if (p_sender_thread_queue_cond != NULL) {
 		pthread_cond_destroy(p_sender_thread_queue_cond);
@@ -1545,7 +1591,11 @@ static int destroy_sender_worker_env(void){
 		p_sender_thread_queue_cond = NULL;
 	}
 
-	pthread_condattr_destroy(&sender_thread_queue_cond_attr);
+	if (p_sender_thread_queue_cond_attr != NULL) {
+		pthread_condattr_destroy(p_sender_thread_queue_cond_attr);
+		shm_free(p_sender_thread_queue_cond_attr);
+		p_sender_thread_queue_cond_attr = NULL;
+	}
 
 	if (sender_pid != NULL){
 		shm_free(sender_pid);
@@ -1571,6 +1621,7 @@ static int spawn_sender_threads(void){
 	sender_threads_running = 1;
 
 	for(t = 0; t < SENDER_THREAD_NUM; t++){
+		LM_INFO("Starting child message sender thread, rank: %d\n", t);
 		rc = pthread_create(&sender_threads[t], NULL, sender_thread_main, (void *) &sender_threads_args[t]);
 		if (rc){
 			LM_ERR("ERROR; return code from pthread_create() is %d\n", rc);
@@ -1636,37 +1687,64 @@ static void *sender_thread_main(void *varg)
 	LM_INFO("Sender thread %d in rank %d started\n", arg->thread_id, arg->rank);
 	size_t to_peek = MAX_PEEK_NUM;
 	size_t peek_num = 0;
+	unsigned long long wait_ctr = 0;
 
 	// Work loop.
-	while(sender_threads_running){
+	while(sender_threads_running)
+	{
 		retry_list_el elems = NULL;
 		int signaled = 0;
+		int res = 0;
 
 		// Maximum wait time in condition wait is x seconds so we don't deadlock (soft deadlock).
 		struct timespec time_to_wait;
 		struct timeval now;
-		gettimeofday(&now, NULL);
-		time_to_wait.tv_sec = now.tv_sec + ((SENDER_THREAD_WAIT_MS) / 1000);
-		time_to_wait.tv_nsec = (now.tv_usec+1000UL*((SENDER_THREAD_WAIT_MS) % 1000))*1000UL;
+		res = gettimeofday(&now, NULL);
+		if (res != 0)
+		{
+			LM_ERR("Could not get current time: %d\n", res);
+		}
+
+		timespec_add_milli(&time_to_wait, &now, SENDER_THREAD_WAIT_MS);
 
 		// <critical_section> monitor queue, poll one job from queue.
-		pthread_mutex_lock(p_sender_thread_queue_cond_mutex);
-		sender_thread_waiters += 1;
+		res = pthread_mutex_lock(p_sender_thread_queue_cond_mutex);
+		if (res != 0)
 		{
-			// If queue is empty, wait for insertion signal.
-			if (retry_is_empty(rl))
-			{
-				// Wait signaling, note mutex is atomically unlocked while waiting.
-				// CPU cycles are saved here since thread blocks while waiting for new jobs.
-				signaled = pthread_cond_timedwait(p_sender_thread_queue_cond, p_sender_thread_queue_cond_mutex, &time_to_wait);
-				sender_thread_waiters -= 1;
-			}
-
-			// Remove given amount of elements from the retry queue atomically.
-			elems = retry_peek_n(rl, to_peek, &peek_num);
+			LM_ERR("Could not lock mutex, code: %d\n", res);
+			usleep(1000000);
 		}
-		pthread_mutex_unlock(p_sender_thread_queue_cond_mutex);
+
+		sender_thread_waiters += 1;
+
+		// If queue is empty, wait for insertion signal.
+		if (retry_is_empty(rl))
+		{
+			// Wait signaling, note mutex is atomically unlocked while waiting.
+			// CPU cycles are saved here since thread blocks while waiting for new jobs.
+			signaled = pthread_cond_timedwait(p_sender_thread_queue_cond, p_sender_thread_queue_cond_mutex, &time_to_wait);
+		}
+
+		// Remove given amount of elements from the retry queue atomically.
+		elems = retry_peek_n(rl, to_peek, &peek_num);
+		sender_thread_waiters -= 1;
+		wait_ctr += 1;
+
+		res = pthread_mutex_unlock(p_sender_thread_queue_cond_mutex);
 		// </critical_section>
+
+		// Mutex unlock check
+		if (res != 0)
+		{
+			LM_ERR("Could not lock mutex, code: %d\n", res);
+			usleep(1000000);
+		}
+
+		// Condition variable waiting check.
+		if (signaled != ETIMEDOUT && signaled != 0)
+		{
+			LM_ERR("cond_timedwait returned error code: %d\n", signaled);
+		}
 
 		// If signaling ended with command to quit.
 		if (!sender_threads_running)
@@ -1674,6 +1752,8 @@ static void *sender_thread_main(void *varg)
 			msg_set_flags_all_list_prev(elems, MS_MSG_ERRO);
 			retry_list_el_free_prev_all(elems);
 			elems = NULL;
+
+			LM_INFO("Sender loop break\n");
 			break;
 		}
 
@@ -1684,7 +1764,7 @@ static void *sender_thread_main(void *varg)
 		}
 
 		// Send messages.
-		LM_INFO("Going to dump %d messages", (int) peek_num);
+		LM_INFO("Going to dump %d messages\n", (int) peek_num);
 		send_messages(elems);
 	}
 
@@ -1692,7 +1772,8 @@ static void *sender_thread_main(void *varg)
 	return NULL;
 }
 
-static int send_messages(retry_list_el list){
+static int send_messages(retry_list_el list)
+{
 	db_res_t* db_res = NULL;
 	int i, n;
 	char hdr_buf[MSG_HDR_BUFF_LEN];
@@ -1710,7 +1791,7 @@ static int send_messages(retry_list_el list){
 
 	// Logic.
 	if (list == NULL){
-		LM_INFO("Message list is empty");
+		LM_INFO("Message list is empty\n");
 		return -1;
 	}
 
@@ -1740,7 +1821,7 @@ static int send_messages(retry_list_el list){
 		// Invariant faikure detection. peek() on retry list should be always terminated on both ends by NULLs.
 		if (mids_to_load_size >= MAX_PEEK_NUM && p0 != NULL)
 		{
-			LM_CRIT("List is not ended with prev=NULL, toLoad: %d, p: %p", (int) mids_to_load_size, p0);
+			LM_CRIT("List is not ended with prev=NULL, toLoad: %d, p: %p\n", (int) mids_to_load_size, p0);
 			break;
 		}
 	}
@@ -1752,7 +1833,7 @@ static int send_messages(retry_list_el list){
 
 	if (build_sql_query(sql_query, &sql_str, mids_to_load, mids_to_load_size) < 0)
 	{
-		LM_CRIT("Could not build sql string");
+		LM_CRIT("Could not build sql string\n");
 		goto error;
 	}
 
@@ -1794,14 +1875,14 @@ static int send_messages(retry_list_el list){
 		// this loop was processing data. Cloning is neccessary though.
 		if (p1 == NULL)
 		{
-			LM_CRIT("Message loaded from DB not found in list: <%lld>, find_iter: [%d]", (long long) mid, find_iter);
+			LM_CRIT("Message loaded from DB not found in list: <%lld>, find_iter: [%d]\n", (long long) mid, find_iter);
 			msg_list_set_flag(ml, mid, MS_MSG_ERRO);
 			continue;
 		}
 
 		if (p1->clone == NULL)
 		{
-			LM_CRIT("Message loaded from DB has no cloned record <%lld>, %p, find_iter: [%d]", (long long) mid, p1, find_iter);
+			LM_CRIT("Message loaded from DB has no cloned record <%lld>, %p, find_iter: [%d]\n", (long long) mid, p1, find_iter);
 			msg_list_set_flag(ml, mid, MS_MSG_ERRO);
 			continue;
 		}
@@ -2055,4 +2136,25 @@ static int msg_set_flags_all(t_msg_mid *mids, size_t mids_size, int flag)
 	}
 
 	return 1;
+}
+
+static void timespec_add_milli(struct timespec * time_to_change, struct timeval * now, long long milli_seconds)
+{
+	const long part_s  = (milli_seconds) / 1000;
+	const long part_ms = (milli_seconds) % 1000;
+
+	// Initial seconds computation - easy.
+	long long sec = now->tv_sec + part_s;
+
+	// Milli -> micro -> nano.
+	unsigned long long nsec = ((unsigned long long)now->tv_usec * 1000ULL) + (part_ms * 1000000ULL);
+
+	// Overflow.
+	unsigned long long sec_extra = nsec / NSEC_PER_SEC;
+	sec  += sec_extra;
+	nsec -= sec_extra * NSEC_PER_SEC;
+
+	// Pass result.
+	time_to_change->tv_sec = (long)sec;
+	time_to_change->tv_nsec = (long)nsec;
 }
