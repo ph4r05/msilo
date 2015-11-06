@@ -29,6 +29,14 @@ typedef struct t_msilo_amqp
     amqp_channel_t              channel;
     amqp_channel_open_ok_t     *channel_ptr;
     int init_ok;
+    int retry_count;
+
+    // For eventual reconnection.
+    char *host;
+    int port;
+    char *vhost;
+    char *username;
+    char *password;
 } t_msilo_amqp;
 
 int msilo_amqp_init(t_msilo_amqp *amqp, const char *host, int port, char const *vhost, char const *username, char const *password);
