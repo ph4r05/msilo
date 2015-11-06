@@ -12,6 +12,7 @@ typedef long long t_msg_mid;
 #define NSEC_PER_SEC  1000000000LL
 #endif
 
-#define RABBIT 1
+// Use RabbitMQ integration
+#define MS_AMQP 1
 
 #endif //OPENSIPS_1_11_2_TLS_MSILO_H

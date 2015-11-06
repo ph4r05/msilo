@@ -72,9 +72,7 @@
 #include "msg_retry.h"
 #include "msfuncs.h"
 #include "msilo.h"
-#ifdef RABBIT
-#include "rabbit.h"
-#endif
+#include "ms_amqp.h"
 
 #define MAX_DEL_KEYS	1
 #define MAX_PEEK_NUM	10
@@ -228,19 +226,19 @@ static int msg_set_flags_all_list_prev(retry_list_el list, int flag);
 static int msg_set_flags_all(t_msg_mid *mids, size_t mids_size, int flag);
 static void timespec_add_milli(struct timespec * time_to_change, struct timeval * now, long long milli_seconds);
 
-#ifdef RABBIT
+#ifdef MS_AMQP
 #define AMQP_BUFF 2048
 /** RabbitMQ */
-t_msilo_rabbit rabbit;
-int rabbit_cfg_ok = 0;
+t_msilo_amqp ms_amqp;
+int amqp_cfg_ok = 0;
 
-char*  ms_rabbit_host = "0.0.0.0";
-char*  ms_rabbit_vhost = "/";
-char*  ms_rabbit_user = NULL;
-char*  ms_rabbit_pass = NULL;
-char*  ms_rabbit_queue = NULL;
-int  ms_rabbit_port = 5672;
-int  ms_rabbit_enabled = 0;
+char*  ms_amqp_host = "0.0.0.0";
+char*  ms_amqp_vhost = "/";
+char*  ms_amqp_user = NULL;
+char*  ms_amqp_pass = NULL;
+char*  ms_amqp_queue = NULL;
+int  ms_amqp_port = 5672;
+int  ms_amqp_enabled = 0;
 #endif
 
 static proc_export_t procs[] = {
@@ -293,14 +291,14 @@ static param_export_t params[]={
 	{ "snd_time_avp",     STR_PARAM, &ms_snd_time_avp_param.s },
 	{ "add_date",         INT_PARAM, &ms_add_date             },
 	{ "max_messages",     INT_PARAM, &ms_max_messages         },
-#ifdef RABBIT
-	{ "rabbit_host",      STR_PARAM, &ms_rabbit_host          },
-	{ "rabbit_vhost",     STR_PARAM, &ms_rabbit_vhost         },
-	{ "rabbit_user",      STR_PARAM, &ms_rabbit_user          },
-	{ "rabbit_pass",      STR_PARAM, &ms_rabbit_pass          },
-	{ "rabbit_queue",     STR_PARAM, &ms_rabbit_queue         },
-	{ "rabbit_port",      INT_PARAM, &ms_rabbit_port          },
-	{ "rabbit_enabled",   INT_PARAM, &ms_rabbit_enabled       },
+#ifdef MS_AMQP
+	{ "amqp_host",      STR_PARAM, &ms_amqp_host          },
+	{ "amqp_vhost",     STR_PARAM, &ms_amqp_vhost         },
+	{ "amqp_user",      STR_PARAM, &ms_amqp_user          },
+	{ "amqp_pass",      STR_PARAM, &ms_amqp_pass          },
+	{ "amqp_queue",     STR_PARAM, &ms_amqp_queue         },
+	{ "amqp_port",      INT_PARAM, &ms_amqp_port          },
+	{ "amqp_enabled",   INT_PARAM, &ms_amqp_enabled       },
 #endif
 	{ 0,0,0 }
 };
@@ -516,18 +514,18 @@ static int mod_init(void)
 	if(ms_outbound_proxy.s!=NULL)
 		ms_outbound_proxy.len = strlen(ms_outbound_proxy.s);
 
-#ifdef RABBIT
-    if (ms_rabbit_enabled)
+#ifdef MS_AMQP
+    if (ms_amqp_enabled)
 	{
-		if (ms_rabbit_user == NULL || ms_rabbit_pass == NULL || ms_rabbit_queue == NULL)
+		if (ms_amqp_user == NULL || ms_amqp_pass == NULL || ms_amqp_queue == NULL)
 		{
 			LM_ERR("AMQP configuration is invalid, disabling AMQP");
-			rabbit_cfg_ok = 0;
-			ms_rabbit_enabled = 0;
+			amqp_cfg_ok = 0;
+			ms_amqp_enabled = 0;
 		}
 		else
 		{
-			rabbit_cfg_ok = 1;
+			amqp_cfg_ok = 1;
 		}
 	}
 #endif
@@ -563,19 +561,19 @@ static int child_init(int rank)
 		LM_DBG("#%d database connection opened successfully\n", rank);
 	}
 
-#ifdef RABBIT
-	if (rabbit_cfg_ok && ms_rabbit_enabled)
+#ifdef MS_AMQP
+	if (amqp_cfg_ok && ms_amqp_enabled)
 	{
-		int rabbit_init = msilo_rabbit_init(&rabbit,
-											ms_rabbit_host,
-											ms_rabbit_port,
-											ms_rabbit_vhost,
-											ms_rabbit_user,
-											ms_rabbit_pass);
-		if (rabbit_init != 0)
+		int amqp_init = msilo_amqp_init(&ms_amqp,
+											ms_amqp_host,
+											ms_amqp_port,
+											ms_amqp_vhost,
+											ms_amqp_user,
+											ms_amqp_pass);
+		if (amqp_init != 0)
 		{
-			LM_CRIT("AMQP initialization failed: %d\n", rabbit_init);
-			ms_rabbit_enabled = 0;
+			LM_CRIT("AMQP initialization failed: %d\n", amqp_init);
+			ms_amqp_enabled = 0;
 		}
 	}
 #endif
@@ -892,9 +890,9 @@ static int m_store(struct sip_msg* msg, char* owner, char* s2)
 	LM_INFO("message stored. T:<%.*s> F:<%.*s>\n",
 		pto->uri.len, pto->uri.s, pfrom->uri.len, pfrom->uri.s);
 
-#ifdef RABBIT
+#ifdef MS_AMQP
     // Send AMQP event
-	if (ms_rabbit_enabled && msilo_rabbit_started(&rabbit))
+	if (ms_amqp_enabled && msilo_amqp_started(&ms_amqp))
 	{
 		char amqp_buff[AMQP_BUFF];
 		size_t amqp_size = 0;
@@ -907,8 +905,8 @@ static int m_store(struct sip_msg* msg, char* owner, char* s2)
 				 msg_type_value.len, msg_type_value.s
 		);
 		amqp_size = strlen(amqp_buff);
-
-		msilo_rabbit_send(&rabbit, ms_rabbit_queue, amqp_buff, amqp_size);
+		
+		msilo_amqp_send(&ms_amqp, ms_amqp_queue, amqp_buff, amqp_size);
 	}
 
 #endif
@@ -1264,10 +1262,10 @@ void destroy(void)
 	LM_DBG("msilo destroy module ...\n");
 	destroy_sender_worker_env();
 
-#ifdef RABBIT
-	if (ms_rabbit_enabled)
+#ifdef MS_AMQP
+	if (ms_amqp_enabled)
 	{
-		msilo_rabbit_deinit(&rabbit);
+		msilo_amqp_deinit(&ms_amqp);
 	}
 #endif
 
