@@ -232,10 +232,10 @@ static void timespec_add_milli(struct timespec * time_to_change, struct timeval 
 t_msilo_amqp ms_amqp;
 int amqp_cfg_ok = 0;
 
-char*  ms_amqp_host = "0.0.0.0";
+char*  ms_amqp_host = "localhost";
 char*  ms_amqp_vhost = "/";
-char*  ms_amqp_user = NULL;
-char*  ms_amqp_pass = NULL;
+char*  ms_amqp_user = "guest";
+char*  ms_amqp_pass = "guest";
 char*  ms_amqp_queue = NULL;
 int  ms_amqp_port = 5672;
 int  ms_amqp_enabled = 0;
@@ -575,6 +575,11 @@ static int child_init(int rank)
 			LM_CRIT("AMQP initialization failed: %d\n", amqp_init);
 			ms_amqp_enabled = 0;
 		}
+		else
+		{
+			LM_INFO("AMQP initialized successfully: %s:%d vhost:%s queue:%s",
+					ms_amqp_host, ms_amqp_port, ms_amqp_vhost, ms_amqp_queue);
+		}
 	}
 #endif
 
@@ -895,6 +900,7 @@ static int m_store(struct sip_msg* msg, char* owner, char* s2)
 	if (ms_amqp_enabled && msilo_amqp_started(&ms_amqp))
 	{
 		char amqp_buff[AMQP_BUFF];
+		amqp_buff[AMQP_BUFF-1] = 0;
 		size_t amqp_size = 0;
 		snprintf(amqp_buff, AMQP_BUFF,
 				 "{\"job\":\"offlineMessage\", \"data\":{\"from\":\"%.*s\",\"to\":\"%.*s\","
@@ -905,7 +911,8 @@ static int m_store(struct sip_msg* msg, char* owner, char* s2)
 				 msg_type_value.len, msg_type_value.s
 		);
 		amqp_size = strlen(amqp_buff);
-		
+
+		LM_INFO("Sending AMQP message: %s\n", amqp_buff);
 		msilo_amqp_send(&ms_amqp, ms_amqp_queue, amqp_buff, amqp_size);
 	}
 

@@ -12,6 +12,7 @@
 
 #include <stdint.h>
 #include <amqp_ssl_socket.h>
+#include <amqp_tcp_socket.h>
 #include <amqp_framing.h>
 
 #include "../../mem/mem.h"
@@ -39,9 +40,9 @@ int msilo_amqp_init(t_msilo_amqp *amqp, const char *host, int port, char const *
     }
 
     // Create a new SSL socket.
-    amqp->socket = amqp_ssl_socket_new(amqp->conn);
+    amqp->socket = amqp_tcp_socket_new(amqp->conn);
     if (amqp->socket == NULL) {
-        LM_CRIT("Rabbit SSL connection could not be created");
+        LM_CRIT("Rabbit TCP connection could not be created");
         check_amqp_status(amqp_destroy_connection(amqp->conn), "Connection destroy");
         amqp->conn = NULL;
         return -2;
@@ -50,7 +51,7 @@ int msilo_amqp_init(t_msilo_amqp *amqp, const char *host, int port, char const *
     // Open the SSL socket.
     status = amqp_socket_open(amqp->socket, host, port);
     if (status) {
-        LM_CRIT("Rabbit SSL connection could not be opened");
+        LM_CRIT("Rabbit TCP connection could not be opened at %s:%d, status: %d", host, port, status);
         check_amqp_error(amqp_connection_close(amqp->conn, AMQP_REPLY_SUCCESS), "Connection close");
         check_amqp_status(amqp_destroy_connection(amqp->conn), "Connection destroy");
         amqp->socket = NULL;
@@ -65,6 +66,7 @@ int msilo_amqp_init(t_msilo_amqp *amqp, const char *host, int port, char const *
     reply = amqp_login(amqp->conn, vhost, 0, 131072, 30, AMQP_SASL_METHOD_PLAIN, username, password);
     status = check_amqp_error(reply, "Logging in");
     if (status < 0){
+        LM_CRIT("Rabbit login failed, vhost: %s, user: %s, status: %d", vhost, username, status);
         check_amqp_error(amqp_connection_close(amqp->conn, AMQP_REPLY_SUCCESS), "Connection close");
         check_amqp_status(amqp_destroy_connection(amqp->conn), "Connection destroy");
         amqp->socket = NULL;
@@ -79,6 +81,7 @@ int msilo_amqp_init(t_msilo_amqp *amqp, const char *host, int port, char const *
     reply = amqp_get_rpc_reply(amqp->conn);
     status = check_amqp_error(reply, "Opening channel");
     if (status < 0){
+        LM_CRIT("Rabbit opening channel failed, status: %d", status);
         check_amqp_error(amqp_channel_close(amqp->conn, amqp->channel, AMQP_REPLY_SUCCESS), "Channel close");
         check_amqp_error(amqp_connection_close(amqp->conn, AMQP_REPLY_SUCCESS), "Connection close");
         check_amqp_status(amqp_destroy_connection(amqp->conn), "Connection destroy");
@@ -126,7 +129,7 @@ int msilo_amqp_send(t_msilo_amqp *amqp, char const *queue, void *buff, size_t si
 
     status = check_amqp_status(amqp_basic_publish(amqp->conn,
                                     amqp->channel,
-                                    amqp_cstring_bytes("amq.direct"),
+                                    amqp_cstring_bytes(""),
                                     amqp_cstring_bytes(queue),
                                     0,
                                     0,
@@ -134,6 +137,10 @@ int msilo_amqp_send(t_msilo_amqp *amqp, char const *queue, void *buff, size_t si
                                     message_bytes),
                  "Publishing");
 
+    if (status < 0)
+    {
+        LM_ERR("AMQP publication failed, status: %d, queue: %s, message: %.*s", status, queue, size, buff);
+    }
     return status;
 }
 
