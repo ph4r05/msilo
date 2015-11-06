@@ -157,6 +157,15 @@ int  ms_use_contact = 1;
 int  ms_add_date = 1;
 int  ms_max_messages = 0;
 
+// AMQP related
+char*  ms_amqp_host = "localhost";
+char*  ms_amqp_vhost = "/";
+char*  ms_amqp_user = "guest";
+char*  ms_amqp_pass = "guest";
+char*  ms_amqp_queue = NULL;
+int  ms_amqp_port = 5672;
+int  ms_amqp_enabled = 0;
+
 static str ms_snd_time_avp_param = {NULL, 0};
 int ms_snd_time_avp_name = -1;
 unsigned short ms_snd_time_avp_type;
@@ -232,13 +241,6 @@ static void timespec_add_milli(struct timespec * time_to_change, struct timeval 
 t_msilo_amqp ms_amqp;
 int amqp_cfg_ok = 0;
 
-char*  ms_amqp_host = "localhost";
-char*  ms_amqp_vhost = "/";
-char*  ms_amqp_user = "guest";
-char*  ms_amqp_pass = "guest";
-char*  ms_amqp_queue = NULL;
-int  ms_amqp_port = 5672;
-int  ms_amqp_enabled = 0;
 #endif
 
 static proc_export_t procs[] = {
@@ -291,15 +293,13 @@ static param_export_t params[]={
 	{ "snd_time_avp",     STR_PARAM, &ms_snd_time_avp_param.s },
 	{ "add_date",         INT_PARAM, &ms_add_date             },
 	{ "max_messages",     INT_PARAM, &ms_max_messages         },
-#ifdef MS_AMQP
-	{ "amqp_host",      STR_PARAM, &ms_amqp_host          },
-	{ "amqp_vhost",     STR_PARAM, &ms_amqp_vhost         },
-	{ "amqp_user",      STR_PARAM, &ms_amqp_user          },
-	{ "amqp_pass",      STR_PARAM, &ms_amqp_pass          },
-	{ "amqp_queue",     STR_PARAM, &ms_amqp_queue         },
-	{ "amqp_port",      INT_PARAM, &ms_amqp_port          },
-	{ "amqp_enabled",   INT_PARAM, &ms_amqp_enabled       },
-#endif
+	{ "amqp_host",        STR_PARAM, &ms_amqp_host            },
+	{ "amqp_vhost",       STR_PARAM, &ms_amqp_vhost           },
+	{ "amqp_user",        STR_PARAM, &ms_amqp_user            },
+	{ "amqp_pass",        STR_PARAM, &ms_amqp_pass            },
+	{ "amqp_queue",       STR_PARAM, &ms_amqp_queue           },
+	{ "amqp_port",        INT_PARAM, &ms_amqp_port            },
+	{ "amqp_enabled",     INT_PARAM, &ms_amqp_enabled         },
 	{ 0,0,0 }
 };
 
@@ -514,9 +514,9 @@ static int mod_init(void)
 	if(ms_outbound_proxy.s!=NULL)
 		ms_outbound_proxy.len = strlen(ms_outbound_proxy.s);
 
-#ifdef MS_AMQP
     if (ms_amqp_enabled)
 	{
+#ifdef MS_AMQP
 		if (ms_amqp_user == NULL || ms_amqp_pass == NULL || ms_amqp_queue == NULL)
 		{
 			LM_ERR("AMQP configuration is invalid, disabling AMQP");
@@ -527,8 +527,12 @@ static int mod_init(void)
 		{
 			amqp_cfg_ok = 1;
 		}
-	}
+#else
+		LM_CRIT("Your configuration enables AMQP integration while module was compiled without AMQP support.");
+		amqp_cfg_ok = 0;
+		ms_amqp_enabled = 0;
 #endif
+	}
 
 	// Sender thread startup.
 	return init_sender_worker_env() == 0 ? 0 : -1;
