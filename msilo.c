@@ -912,7 +912,7 @@ static int m_store(struct sip_msg* msg, char* owner, char* s2)
 		);
 		amqp_size = strlen(amqp_buff);
 
-		LM_INFO("Sending AMQP message: %s\n", amqp_buff);
+		LM_INFO("Sending AMQP message: %s to queue %s to queue: %s\n", amqp_buff, ms_amqp_queue);
 		msilo_amqp_send(&ms_amqp, ms_amqp_queue, amqp_buff, amqp_size);
 	}
 
